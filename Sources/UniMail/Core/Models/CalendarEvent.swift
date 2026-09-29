@@ -95,7 +95,8 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
     static func meetingURL(in text: String) -> URL? {
         let hosts = ["teams.microsoft.com", "teams.live.com", "zoom.us", "meet.google.com", "telemost.yandex",
                      "webex.com", "skype.com", "meet.jit.si", "ktalk.ru", "sferum.ru", "vk.com/call", "salutejazz.ru",
-                     "jazz.sber.ru", "dion.vc", "trueconf"]
+                     "jazz.sber.ru", "dion.vc", "trueconf", "xlnk.ms", "express.ms", "mts-link.ru", "my.mts-link.ru",
+                     "webinar.ru", "bbb", "whereby.com", "gotomeeting.com"]
         guard let regex = try? NSRegularExpression(pattern: #"https?://[^\s<>"'\)\]]+"#, options: .caseInsensitive) else { return nil }
         let range = NSRange(text.startIndex..., in: text)
         for match in regex.matches(in: text, range: range) {

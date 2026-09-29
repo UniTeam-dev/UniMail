@@ -44,21 +44,33 @@ struct EventDetailView: View {
             }
 
             VStack(alignment: .leading, spacing: 9) {
-                if !event.location.isEmpty {
+                if !event.location.isEmpty && !locationIsLink {
                     row("mappin.and.ellipse") {
                         Text(event.location).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                if let url = event.meetingURL {
+                if let url = event.meetingURL ?? (locationIsLink ? URL(string: event.location.trimmingCharacters(in: .whitespaces)) : nil) {
                     row("video") {
-                        Button {
-                            NSWorkspace.shared.open(url)
-                        } label: {
-                            Label("Подключиться", systemImage: "arrow.up.right")
-                                .labelStyle(.titleAndIcon)
+                        HStack(spacing: 8) {
+                            Button {
+                                NSWorkspace.shared.open(url)
+                            } label: {
+                                Label("Подключиться", systemImage: "arrow.up.right")
+                                    .labelStyle(.titleAndIcon)
+                            }
+                            .buttonStyle(UMButtonStyle(kind: .primary, height: 24, radius: 7, horizontal: 10))
+                            Text(url.host ?? "")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(UM.fg3)
+                                .lineLimit(1)
                         }
-                        .buttonStyle(UMButtonStyle(kind: .primary, height: 24, radius: 7, horizontal: 10))
                         .help(url.absoluteString)
+                        .contextMenu {
+                            Button("Скопировать ссылку") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                            }
+                        }
                     }
                 }
                 row("calendar") {
@@ -137,9 +149,19 @@ struct EventDetailView: View {
         }
     }
 
-    /// Описание без технического хвоста Teams/Zoom (ссылка уже на кнопке).
+    /// Место — просто ссылка на видеовстречу.
+    private var locationIsLink: Bool {
+        let location = event.location.trimmingCharacters(in: .whitespaces).lowercased()
+        return location.hasPrefix("http://") || location.hasPrefix("https://")
+    }
+
+    /// Описание без технического хвоста Teams/Zoom и без ссылки, которая уже на кнопке.
     private var notes: String {
-        event.notes
+        var text = event.notes
+        for link in [event.meetingURL?.absoluteString, locationIsLink ? event.location.trimmingCharacters(in: .whitespaces) : nil] {
+            if let link, !link.isEmpty { text = text.replacingOccurrences(of: link, with: "🔗") }
+        }
+        return text
             .replacingOccurrences(of: "_{10,}", with: "", options: .regularExpression)
             .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)

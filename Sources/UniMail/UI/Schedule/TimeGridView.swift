@@ -62,7 +62,12 @@ struct TimeGridView: View {
             if first == nil { hour = max(7, now - 2) }
         }
         hour = min(hour, 16)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { proxy.scrollTo(hour, anchor: .top) }
+        // После раскладки сетки (и ещё раз — если данные Exchange пришли чуть позже).
+        for delay in [0.05, 0.35] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation(nil) { proxy.scrollTo(hour, anchor: .top) }
+            }
+        }
     }
 
     // MARK: Шапка недели

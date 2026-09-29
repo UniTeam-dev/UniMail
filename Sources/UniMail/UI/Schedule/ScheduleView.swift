@@ -102,11 +102,13 @@ struct ScheduleView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .tracking(-0.15)
                 .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(-1)
                 .contentTransition(.opacity)
             if loading { ProgressView().controlSize(.mini) }
             Spacer(minLength: 8)
             SlidingSegments(items: ranges, selection: $store.scheduleRange, equalWidth: true, fontSize: 12)
-                .frame(width: 210)
+                .frame(width: 190)
             HStack(spacing: 2) {
                 Button { shift(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 22).contentShape(Rectangle()) }
                     .buttonStyle(ToolbarIconStyle(width: 28, height: 26, radius: 7))
@@ -114,6 +116,7 @@ struct ScheduleView: View {
                 Button("Сегодня") { withAnimation(Motion.smooth) { store.scheduleDate = .now } }
                     .buttonStyle(UMButtonStyle(kind: .secondary, height: 26, radius: 7, horizontal: 10))
                     .font(.system(size: 12, weight: .semibold))
+                    .fixedSize()
                 Button { shift(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 22).contentShape(Rectangle()) }
                     .buttonStyle(ToolbarIconStyle(width: 28, height: 26, radius: 7))
                     .help("Вперёд")
@@ -123,10 +126,11 @@ struct ScheduleView: View {
             }
             .buttonStyle(UMButtonStyle(kind: .primary, height: 26, radius: 7, horizontal: 10))
             .font(.system(size: 12, weight: .semibold))
+            .fixedSize()
             .help("Новая встреча · ⌘⇧E")
             .keyboardShortcut("e", modifiers: [.command, .shift])
             SearchField(text: $store.searchText)
-                .frame(width: 170)
+                .frame(minWidth: 90, idealWidth: 170, maxWidth: 170)
         }
         .padding(.horizontal, 14)
         .frame(height: 52)
@@ -337,7 +341,7 @@ private struct AgendaPanel: View {
             if event.needsResponse {
                 HStack(spacing: 5) {
                     quickButton(event, .accepted, "Принять", "checkmark", UM.green)
-                    quickButton(event, .tentative, "Может быть", "questionmark", UM.orange)
+                    quickButton(event, .tentative, "Возможно", "questionmark", UM.orange)
                     quickButton(event, .declined, "Отклонить", "xmark", UM.red)
                 }
             }
@@ -376,7 +380,12 @@ private struct AgendaPanel: View {
         if event.source == .mail, let organizer = event.organizer {
             parts.append("от \(organizer.display)")
         } else if !event.location.isEmpty {
-            parts.append(event.location)
+            let location = event.location.trimmingCharacters(in: .whitespaces)
+            if location.lowercased().hasPrefix("http"), let host = URL(string: location)?.host {
+                parts.append("видеовстреча · \(host.replacingOccurrences(of: "www.", with: ""))")
+            } else {
+                parts.append(location)
+            }
         } else if let organizer = event.organizer, event.myResponse != .organizer {
             parts.append(organizer.display)
         }
@@ -394,9 +403,9 @@ private struct AgendaPanel: View {
                 } else {
                     Image(systemName: symbol).font(.system(size: 9.5, weight: .bold)).foregroundStyle(tint)
                 }
-                Text(title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
+                Text(title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 5)
             .frame(maxWidth: .infinity, minHeight: 24)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(UM.field))
             .contentShape(Rectangle())

@@ -93,15 +93,12 @@ struct EventDetailView: View {
                     row("ellipsis") { ProgressView().controlSize(.small) }
                 }
                 if !notes.isEmpty {
-                    ScrollView {
-                        Text(notes)
-                            .font(.system(size: 12))
-                            .foregroundStyle(UM.fg2)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 140)
-                    .padding(8)
+                    Text(notes)
+                        .font(.system(size: 12))
+                        .foregroundStyle(UM.fg2)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
                     .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(UM.inset))
                 }
             }
@@ -120,7 +117,7 @@ struct EventDetailView: View {
             actionsBar.padding(.top, 14)
         }
         .padding(16)
-        .frame(width: 360)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .task {
             if event.detailsPending {
                 let detailed = await store.loadDetails(event)

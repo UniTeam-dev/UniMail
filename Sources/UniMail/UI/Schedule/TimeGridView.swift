@@ -12,7 +12,6 @@ struct TimeGridView: View {
     let data: ScheduleData
     let actions: ScheduleActions
 
-    @State private var popoverID: String?
     private let hourHeight: CGFloat = 50
     private let gutter: CGFloat = 54
 
@@ -131,8 +130,7 @@ struct TimeGridView: View {
 
     private func chip(_ event: CalendarEvent, key: String) -> some View {
         let color = data.color(event)
-        let id = "\(key)-\(event.id)"
-        return Button { popoverID = id } label: {
+        return Button { actions.open(event) } label: {
             HStack(spacing: 5) {
                 RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 3, height: 12)
                 Text(event.title).font(.system(size: 11.5, weight: .medium)).lineLimit(1)
@@ -144,9 +142,6 @@ struct TimeGridView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .popover(isPresented: binding(id), arrowEdge: .bottom) {
-            EventDetailView(event: event, data: data, actions: actions) { popoverID = nil }
-        }
     }
 
     // MARK: Часы
@@ -227,10 +222,9 @@ struct TimeGridView: View {
     private func eventBlock(_ event: CalendarEvent, height: CGFloat, compact: Bool, day: Date) -> some View {
         let color = data.color(event)
         let tint = NSColor(color)
-        let id = "grid-\(day.timeIntervalSince1970)-\(event.id)"
         let declined = event.myResponse == .declined
         let pending = event.needsResponse
-        return Button { popoverID = id } label: {
+        return Button { actions.open(event) } label: {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     if pending {
@@ -271,14 +265,16 @@ struct TimeGridView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .popover(isPresented: binding(id), arrowEdge: .trailing) {
-            EventDetailView(event: event, data: data, actions: actions) { popoverID = nil }
-        }
     }
 
     private func subtitle(_ event: CalendarEvent) -> String {
         var parts = [EventTime.text(event)]
-        if !event.location.isEmpty { parts.append(event.location) }
+        let location = event.location.trimmingCharacters(in: .whitespaces)
+        if location.lowercased().hasPrefix("http") {
+            parts.append("видеовстреча")
+        } else if !location.isEmpty {
+            parts.append(location)
+        }
         if event.source == .mail { parts.append("из письма") }
         return parts.joined(separator: " · ")
     }
@@ -309,7 +305,4 @@ struct TimeGridView: View {
         }
     }
 
-    private func binding(_ id: String) -> Binding<Bool> {
-        Binding(get: { popoverID == id }, set: { if !$0, popoverID == id { popoverID = nil } })
-    }
 }

@@ -9,8 +9,6 @@ struct ScheduleMonthView: View {
     let data: ScheduleData
     let actions: ScheduleActions
 
-    @State private var popoverID: String?
-    @State private var moreDay: Date?
 
     private var calendar: Calendar { data.calendar }
 
@@ -71,7 +69,7 @@ struct ScheduleMonthView: View {
                 chip(event, day: day)
             }
             if hidden > 0 {
-                Button { moreDay = day } label: {
+                Button { actions.openDay(day) } label: {
                     Text("ещё \(hidden)")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(UM.fg2)
@@ -80,14 +78,7 @@ struct ScheduleMonthView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .popover(isPresented: Binding(get: { moreDay == day }, set: { if !$0 { moreDay = nil } })) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(RelativeDate.dayTitle(day)).font(.system(size: 13, weight: .semibold)).padding(.bottom, 4)
-                        ForEach(items) { event in chip(event, day: day, key: "more") }
-                    }
-                    .padding(12)
-                    .frame(width: 260)
-                }
+                .help("Открыть день")
             }
             Spacer(minLength: 0)
         }
@@ -109,9 +100,8 @@ struct ScheduleMonthView: View {
 
     private func chip(_ event: CalendarEvent, day: Date, key: String = "cell") -> some View {
         let color = data.color(event)
-        let id = "\(key)-\(day.timeIntervalSince1970)-\(event.id)"
         let declined = event.myResponse == .declined || event.isCancelled
-        return Button { popoverID = id } label: {
+        return Button { actions.open(event) } label: {
             HStack(spacing: 4) {
                 if event.isAllDay {
                     Text(event.title)
@@ -141,9 +131,5 @@ struct ScheduleMonthView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(HoverStyle(radius: 4, pressScale: 1))
-        .popover(isPresented: Binding(get: { popoverID == id }, set: { if !$0, popoverID == id { popoverID = nil } }),
-                 arrowEdge: .trailing) {
-            EventDetailView(event: event, data: data, actions: actions) { popoverID = nil }
-        }
     }
 }

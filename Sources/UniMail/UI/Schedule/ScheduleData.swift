@@ -148,6 +148,8 @@ struct EventEditorRequest: Identifiable {
 /// Действия с встречами, общие для всех видов.
 @MainActor
 struct ScheduleActions {
+    /// Открыть карточку встречи (панель справа).
+    var open: (CalendarEvent) -> Void
     var edit: (CalendarEvent) -> Void
     var create: (Date, Bool) -> Void
     var openDay: (Date) -> Void

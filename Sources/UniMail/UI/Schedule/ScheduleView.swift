@@ -7,6 +7,8 @@ import SwiftUI
 struct ScheduleView: View {
     @Environment(MailStore.self) private var store
     @State private var editor: EventEditorRequest?
+    /// Открытая карточка встречи (панель справа; не поповер — у AppKit он падает при смене размера).
+    @State private var selected: CalendarEvent?
     @State private var loading = false
 
     private var data: ScheduleData { ScheduleData(store: store) }
@@ -17,6 +19,7 @@ struct ScheduleView: View {
         let interval = data.interval(for: store.scheduleRange, around: store.scheduleDate)
         let events = data.events(from: interval.start, to: interval.end)
         let actions = ScheduleActions(
+            open: { event in withAnimation(Motion.snappy) { selected = event } },
             edit: { event in Task { await openEditor(for: event) } },
             create: { start, allDay in create(at: start, allDay: allDay) },
             openDay: { day in
@@ -53,8 +56,16 @@ struct ScheduleView: View {
                 }
             }
             .transition(.opacity)
+            .overlay(alignment: .trailing) {
+                if let event = selected {
+                    detailPanel(event, actions: actions)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
         }
         .background(UM.win)
+        .onChange(of: store.scheduleRange) { selected = nil }
+        .onExitCommand { if selected != nil { withAnimation(Motion.snappy) { selected = nil } } }
         .animation(Motion.smooth, value: store.scheduleRange)
         .task {
             // Встречи Календаря macOS: Google, iCloud и другие подключаются там.
@@ -75,6 +86,34 @@ struct ScheduleView: View {
         .sheet(item: $editor) { request in
             EventEditorSheet(request: request) { editor = nil }
         }
+    }
+
+    /// Карточка встречи: панель поверх правой части, прокручивается, закрывается крестиком или Esc.
+    private func detailPanel(_ event: CalendarEvent, actions: ScheduleActions) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button { withAnimation(Motion.snappy) { selected = nil } } label: {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).frame(width: 24, height: 24)
+                }
+                .buttonStyle(ToolbarIconStyle(width: 26, height: 26, radius: 7))
+                .help("Закрыть · Esc")
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            ScrollView {
+                EventDetailView(event: event, data: data, actions: actions) {
+                    withAnimation(Motion.snappy) { selected = nil }
+                }
+                .id(event.id)
+                .padding(.top, -10)
+            }
+        }
+        .frame(width: 380)
+        .frame(maxHeight: .infinity)
+        .background(UM.card)
+        .overlay(alignment: .leading) { Rectangle().fill(UM.sepStrong).frame(width: 0.5) }
+        .shadow(color: .black.opacity(0.18), radius: 16, x: -4, y: 0)
     }
 
     private func loadKey(_ interval: DateInterval) -> String {
@@ -221,7 +260,6 @@ private struct AgendaPanel: View {
     @Environment(MailStore.self) private var store
     let data: ScheduleData
     let actions: ScheduleActions
-    @State private var popoverID: String?
     @State private var responding: [String: EventResponse] = [:]
 
     private var calendar: Calendar { data.calendar }
@@ -303,10 +341,9 @@ private struct AgendaPanel: View {
 
     private func eventRow(_ event: CalendarEvent, day: Date) -> some View {
         let color = data.color(event)
-        let id = "agenda-\(event.id)"
         let declined = event.myResponse == .declined
         return VStack(alignment: .leading, spacing: 8) {
-            Button { popoverID = id } label: {
+            Button { actions.open(event) } label: {
                 HStack(spacing: 10) {
                     RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 3, height: 30)
                     VStack(alignment: .leading, spacing: 1) {
@@ -358,10 +395,6 @@ private struct AgendaPanel: View {
             }
         }
         .opacity(declined ? 0.55 : 1)
-        .popover(isPresented: Binding(get: { popoverID == id }, set: { if !$0, popoverID == id { popoverID = nil } }),
-                 arrowEdge: .leading) {
-            EventDetailView(event: event, data: data, actions: actions) { popoverID = nil }
-        }
         .contextMenu {
             if event.canRespond {
                 Button("Принять") { Task { await respond(event, .accepted) } }
@@ -369,7 +402,7 @@ private struct AgendaPanel: View {
                 Button("Отклонить") { Task { await respond(event, .declined) } }
                 Divider()
             }
-            Button("Подробнее…") { popoverID = id }
+            Button("Подробнее…") { actions.open(event) }
             Button("Открыть день") { actions.openDay(day) }
         }
     }

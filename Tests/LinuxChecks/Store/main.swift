@@ -155,6 +155,27 @@ store.sendScheduledNow(messageID: scheduledID)
 check(await waitUntil { smtp.lock.withLock { smtp.messages.count } == smtpBefore + 1 }, "scheduled sent now")
 check(ScheduledDraftsFile.load()[scheduledID] == nil, "scheduled file cleared")
 
+// 9a. Подписи: полная — в новые письма, короткая — в ответы.
+if let index = store.accounts.firstIndex(where: { $0.id == accountID }) {
+    let full = MailSignature(name: "Полная", text: "Анна Волкова\nСеверлаб")
+    let short = MailSignature(name: "Короткая", text: "А.")
+    store.accounts[index].signatures = [full, short]
+    store.accounts[index].newMailSignatureID = full.id
+    store.accounts[index].replySignatureID = short.id
+    store.select(scope: .account(accountID, .inbox))
+    store.compose(.new)
+    check(store.composeQueue.last?.draft.body == "\n\n--\nАнна Волкова\nСеверлаб", "new mail gets full signature")
+    store.compose(.reply, from: source.id)
+    let replyBody = store.composeQueue.last?.draft.body ?? ""
+    check(replyBody.hasPrefix("\n\n--\nА.\n") && replyBody.contains("> "), "reply gets short signature above quote")
+    store.accounts[index].replySignatureID = nil
+    store.compose(.forward, from: source.id)
+    check(store.composeQueue.last?.draft.body.hasPrefix("\n\n--\n") == false, "no signature when disabled for replies")
+    var legacy = Account(displayName: "Старый", email: "old@example.com", kind: .imap, tint: .red, signature: "Иван")
+    legacy.migrateSignatures()
+    check(legacy.signatureText(for: .newMail) == "Иван" && legacy.signatureText(for: .reply) == "Иван", "legacy signature migrated")
+}
+
 // 10. Черновик с HTML сохраняется и открывается тем же окном.
 var htmlDraft = draft
 htmlDraft.htmlBody = "<p><b>Жирный</b> текст</p>"

@@ -103,7 +103,8 @@ extension MailStore {
               let account = self.account(source.accountID) else { return false }
 
         var body = trimmed
-        if !account.signature.isEmpty { body += "\n\n--\n\(account.signature)" }
+        let signature = account.signatureText(for: .reply)
+        if !signature.isEmpty { body += "\n\n--\n\(signature)" }
         body += ComposeRequest.quote(source)
 
         var draft = OutgoingMessage(

@@ -82,7 +82,11 @@ private struct AccountsSettings: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             if let index = store.accounts.firstIndex(where: { $0.id == selection }) {
-                accountForm($store.accounts[index])
+                ScrollView {
+                    accountForm($store.accounts[index])
+                        .padding(.bottom, 12)
+                }
+                .scrollIndicators(.automatic)
             } else {
                 Text("Выберите аккаунт слева")
                     .foregroundStyle(UM.fg3)
@@ -163,16 +167,8 @@ private struct AccountsSettings: View {
                 }
             }
             GridRow(alignment: .top) {
-                label("Подпись").padding(.top, 8)
-                TextEditor(text: account.signature)
-                    .font(.system(size: 12.5))
-                    .lineSpacing(3)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 6)
-                    .frame(height: 96)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(UM.card))
-                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(UM.cardBorder, lineWidth: 0.5))
+                label("Подписи").padding(.top, 6)
+                SignaturesEditor(account: account)
             }
             GridRow {
                 Color.clear.frame(width: 1, height: 1)
@@ -197,6 +193,99 @@ private struct AccountsSettings: View {
     private func serverSummary(_ account: Account) -> String {
         guard let server = account.server else { return "не заданы" }
         return "IMAP \(server.imapHost):\(server.imapPort) · SMTP \(server.smtpHost):\(server.smtpPort)"
+    }
+}
+
+/// Подписи ящика: список (название + текст) и какая подставляется сама в новые письма и в ответы.
+@MainActor
+private struct SignaturesEditor: View {
+    @Binding var account: Account
+
+    private var list: Binding<[MailSignature]> {
+        Binding(get: { account.signatures ?? [] }, set: { account.signatures = $0 })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(list) { $item in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        TextField("", text: $item.name, prompt: Text("Название").foregroundColor(UM.fg3))
+                            .textFieldStyle(.plain)
+                            .fontWeight(.medium)
+                        Button {
+                            remove(item.id)
+                        } label: {
+                            Image(systemName: "trash").font(.system(size: 11))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(UM.fg3)
+                        .help("Удалить подпись")
+                    }
+                    TextEditor(text: $item.text)
+                        .font(.system(size: 12.5))
+                        .lineSpacing(3)
+                        .scrollContentBackground(.hidden)
+                        .frame(height: 62)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(UM.card))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(UM.cardBorder, lineWidth: 0.5))
+            }
+
+            Button {
+                add()
+            } label: {
+                Label("Добавить подпись", systemImage: "plus")
+            }
+            .buttonStyle(UMButtonStyle(kind: .secondary, height: 26, radius: 7, horizontal: 10))
+
+            if !list.wrappedValue.isEmpty {
+                picker("Новые письма", selection: $account.newMailSignatureID)
+                picker("Ответы и пересылки", selection: $account.replySignatureID)
+            }
+            Text("Подпись вставляется над цитатой автоматически. В окне письма её можно сменить или убрать кнопкой «Подпись».")
+                .font(.system(size: 11.5))
+                .foregroundStyle(UM.fg3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func picker(_ title: String, selection: Binding<UUID?>) -> some View {
+        HStack(spacing: 8) {
+            Text(title).foregroundStyle(UM.fg2).frame(width: 130, alignment: .leading)
+            Picker("", selection: selection) {
+                Text("Без подписи").tag(UUID?.none)
+                ForEach(list.wrappedValue) { item in
+                    Text(item.name.isEmpty ? "Без названия" : item.name).tag(UUID?.some(item.id))
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        }
+        .font(.system(size: 12.5))
+    }
+
+    private func add() {
+        let number = list.wrappedValue.count + 1
+        let name = number == 1 ? "Основная" : "Подпись \(number)"
+        let text = account.senderName ?? account.displayName
+        let item = MailSignature(name: name, text: text)
+        withAnimation(Motion.snappy) {
+            account.signatures = list.wrappedValue + [item]
+            // Первая подпись сразу подставляется везде.
+            if account.newMailSignatureID == nil && number == 1 { account.newMailSignatureID = item.id }
+            if account.replySignatureID == nil && number == 1 { account.replySignatureID = item.id }
+        }
+    }
+
+    private func remove(_ id: UUID) {
+        withAnimation(Motion.snappy) {
+            account.signatures = list.wrappedValue.filter { $0.id != id }
+            if account.newMailSignatureID == id { account.newMailSignatureID = nil }
+            if account.replySignatureID == id { account.replySignatureID = nil }
+        }
     }
 }
 

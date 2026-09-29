@@ -21,6 +21,8 @@ struct ComposeView: View {
     @State private var scheduleDay: Date = Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
     @State private var scheduleTime = "08:00"
     @State private var calendarMonth = Date.now
+    /// Подпись в письме (nil — без подписи). Меняется меню «Подпись» и при смене ящика.
+    @State private var signatureID: UUID?
     @FocusState private var focus: Field?
 
     private enum Field { case to, subject }
@@ -33,6 +35,32 @@ struct ComposeView: View {
     }
 
     private var account: Account? { store.account(draft.accountID) }
+
+    /// Новые письма — одна подпись, ответы и пересылки — другая (настраивается у ящика).
+    private var signatureUse: SignatureUse { request.mode == .new ? .newMail : .reply }
+
+    private var signatureText: String {
+        guard let signatureID else { return "" }
+        return account?.signatureList.first { $0.id == signatureID }?.text ?? ""
+    }
+
+    /// Какая подпись уже стоит в тексте: у черновика — ищем по тексту, у нового письма — подпись по умолчанию.
+    private func initialSignatureID() -> UUID? {
+        guard let account else { return nil }
+        if request.mode == .draft {
+            let body = request.draft.body
+            return account.signatureList
+                .filter { !$0.text.isEmpty && body.contains($0.text) }
+                .max { $0.text.count < $1.text.count }?.id
+        }
+        return account.signatureID(for: signatureUse)
+    }
+
+    private func applySignature(_ id: UUID?) {
+        let previous = signatureText
+        signatureID = id
+        editor.replaceSignature(with: signatureText, previous: previous)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,7 +97,15 @@ struct ComposeView: View {
         .animation(Motion.pop, value: sendMenuOpen)
         .animation(Motion.pop, value: fromOpen)
         .animation(Motion.pop, value: templatesOpen)
-        .onAppear { if draft.to.isEmpty { focus = .to } }
+        .onAppear {
+            // Окно, восстановленное системой для удалённого ящика, переводим на первый ящик.
+            if account == nil, let first = store.accounts.first {
+                draft.accountID = first.id
+                draft.fromAddress = first.email
+            }
+            if draft.to.isEmpty { focus = .to }
+            signatureID = initialSignatureID()
+        }
         .onChange(of: draft) { old, value in
             // HTML пересчитывается из того же текста — сама по себе его смена черновик не меняет.
             var comparable = old
@@ -78,8 +114,10 @@ struct ComposeView: View {
             store.saveDraft(value, requestID: request.id)
         }
         .onChange(of: draft.accountID) { oldID, newID in
-            editor.replaceSignature(with: store.account(newID)?.signature ?? "",
-                                    previous: store.account(oldID)?.signature)
+            // Другой ящик — его подпись: меняем блок подписи в тексте.
+            let previous = store.account(oldID)?.signatureList.first { $0.id == signatureID }?.text ?? ""
+            signatureID = store.account(newID)?.signatureID(for: signatureUse)
+            editor.replaceSignature(with: signatureText, previous: previous)
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             for provider in providers {
@@ -107,6 +145,8 @@ struct ComposeView: View {
                 .lineLimit(1)
             Spacer()
             HStack(spacing: 2) {
+                signatureMenu
+                    .padding(.trailing, 4)
                 Button {
                     withAnimation(Motion.smooth) { showFormatBar.toggle() }
                 } label: { Image(systemName: "textformat") }
@@ -225,7 +265,7 @@ struct ComposeView: View {
             plainText: $draft.body,
             html: $draft.htmlBody,
             controller: editor,
-            signature: account?.signature ?? "",
+            signature: signatureText.isEmpty ? (account?.signature(for: signatureUse)?.text ?? "") : signatureText,
             initialFocus: !draft.to.isEmpty,
             onFileDrop: { urls in addAttachments(urls) }
         )
@@ -262,7 +302,7 @@ struct ComposeView: View {
             Button(action: pickFiles) {
                 HStack(spacing: 6) {
                     Image(systemName: "paperclip").font(.system(size: 13))
-                    Text("Вложить")
+                    Text("Вложить").lineLimit(1).fixedSize()
                 }
                 .font(.system(size: 12.5, weight: .medium))
             }
@@ -277,7 +317,7 @@ struct ComposeView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "doc.text").font(.system(size: 13))
-                    Text("Шаблоны")
+                    Text("Шаблоны").lineLimit(1).fixedSize()
                 }
                 .font(.system(size: 12.5, weight: .medium))
             }
@@ -296,7 +336,7 @@ struct ComposeView: View {
             Button { draft.sendSeparately.toggle() } label: {
                 HStack(spacing: 8) {
                     MiniSwitch(isOn: draft.sendSeparately, width: 28, height: 17)
-                    Text("Каждому отдельно").font(.system(size: 12.5))
+                    Text("Каждому отдельно").font(.system(size: 12.5)).lineLimit(1).fixedSize()
                 }
                 .padding(.horizontal, 8)
                 .frame(height: 30)
@@ -340,6 +380,8 @@ struct ComposeView: View {
                         Image(systemName: draft.sendAt == nil ? "paperplane.fill" : "paperplane.circle.fill")
                             .font(.system(size: 13))
                         Text(draft.sendAt == nil ? "Отправить" : "Запланировать")
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.leading, 14)
@@ -448,6 +490,52 @@ struct ComposeView: View {
             .frame(width: 230)
             .umMenuSurface(radius: 11)
         }
+    }
+
+    // MARK: Подпись
+
+    private var signatureMenu: some View {
+        let list = account?.signatureList ?? []
+        return Menu {
+            ForEach(list) { item in
+                Button {
+                    applySignature(item.id)
+                } label: {
+                    if item.id == signatureID {
+                        Label(item.name, systemImage: "checkmark")
+                    } else {
+                        Text(item.name)
+                    }
+                }
+            }
+            if !list.isEmpty { Divider() }
+            Button {
+                applySignature(nil)
+            } label: {
+                if signatureID == nil {
+                    Label("Без подписи", systemImage: "checkmark")
+                } else {
+                    Text("Без подписи")
+                }
+            }
+            Divider()
+            SettingsLink { Text("Настроить подписи…") }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "signature").font(.system(size: 12))
+                Text(list.first { $0.id == signatureID }?.name ?? "Без подписи")
+                    .lineLimit(1)
+                    .frame(maxWidth: 120)
+            }
+            .font(.system(size: 12, weight: .medium))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .padding(.horizontal, 9)
+        .frame(height: 26)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(UM.field))
+        .help("Подпись в этом письме. Какая подставляется сама — в Настройках → Аккаунты")
     }
 
     // MARK: Шаблоны

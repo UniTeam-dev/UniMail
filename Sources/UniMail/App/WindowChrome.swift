@@ -69,6 +69,49 @@ struct WindowChrome: NSViewRepresentable {
                 let y = (barHeight - button.frame.height) / 2
                 button.setFrameOrigin(NSPoint(x: leading + CGFloat(index) * 20, y: y))
             }
+
+            // «Облачко» под кнопками: капсула в заголовке, под светофором. В полноэкранном режиме
+            // заголовок прячется вместе с ней.
+            let backdrop = titlebar.subviews.compactMap { $0 as? TrafficLightsBackdrop }.first ?? {
+                let view = TrafficLightsBackdrop()
+                titlebar.addSubview(view, positioned: .below, relativeTo: close)
+                return view
+            }()
+            let height: CGFloat = 26
+            let width = 2 * 20 + close.frame.width + 2 * 8
+            backdrop.frame = NSRect(x: leading - 8, y: (barHeight - height) / 2, width: width, height: height)
         }
+    }
+}
+
+/// Подложка светофора: полупрозрачная капсула с тонкой обводкой, цвета — под текущую тему.
+final class TrafficLightsBackdrop: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) не используется") }
+
+    override var wantsUpdateLayer: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        layer.cornerRadius = bounds.height / 2
+        layer.cornerCurve = .continuous
+        layer.backgroundColor = (dark ? NSColor(white: 1, alpha: 0.09) : NSColor(white: 0, alpha: 0.055)).cgColor
+        layer.borderWidth = 0.5
+        layer.borderColor = (dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.08)).cgColor
+        layer.shadowColor = NSColor.black.cgColor
+        layer.shadowOpacity = dark ? 0.35 : 0.08
+        layer.shadowRadius = 3
+        layer.shadowOffset = CGSize(width: 0, height: -1)
+    }
+
+    override func layout() {
+        super.layout()
+        needsDisplay = true
     }
 }

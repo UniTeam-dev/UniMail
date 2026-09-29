@@ -66,6 +66,21 @@ struct ThreadRow: View {
                             .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(UM.seg))
                     }
                     Spacer(minLength: 4)
+                    // В «Все ящики» — чей это ящик: метка с названием и цветом аккаунта.
+                    if showAccount, let account {
+                        HStack(spacing: 4) {
+                            Circle().fill(account.tint.color).frame(width: 6, height: 6)
+                            Text(account.displayName)
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(account.tint.color)
+                        .padding(.horizontal, 6)
+                        .frame(height: 16)
+                        .background(Capsule().fill(account.tint.color.opacity(isSelected ? 0.22 : 0.14)))
+                        .fixedSize()
+                        .help(account.email)
+                    }
                     if thread.latest.role == .sent && thread.latest.noReplyNotice == true {
                         Text("Нет ответа")
                             .font(.system(size: 10.5, weight: .semibold))

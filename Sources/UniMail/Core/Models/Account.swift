@@ -122,7 +122,12 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     var kind: ProviderKind
     var tint: AccountTint
     var server: ServerSettings?
+    /// Старое поле: одна подпись строкой. Переносится в `signatures` при загрузке.
     var signature: String = ""
+    /// Подписи ящика и какие из них подставлять автоматически.
+    var signatures: [MailSignature]?
+    var newMailSignatureID: UUID?
+    var replySignatureID: UUID?
     /// Дополнительные адреса отправителя (алиасы, Gmail «Send mail as»).
     var aliases: [String] = []
     /// Имя отправителя в письмах: «Анна Волкова».
@@ -145,5 +150,52 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
         case .imap: return "IMAP · \(server?.imapHost ?? "")"
         case .demo: return "Демо"
         }
+    }
+}
+
+/// Подпись письма. У ящика их может быть несколько: например, полная — для новых писем, короткая — для ответов.
+struct MailSignature: Identifiable, Codable, Hashable, Sendable {
+    var id: UUID = UUID()
+    var name: String
+    var text: String
+}
+
+/// Куда подставляется подпись.
+enum SignatureUse: Sendable {
+    /// Новое письмо.
+    case newMail
+    /// Ответ, ответ всем, пересылка.
+    case reply
+}
+
+extension Account {
+    var signatureList: [MailSignature] { signatures ?? [] }
+
+    func signatureID(for use: SignatureUse) -> UUID? {
+        use == .newMail ? newMailSignatureID : replySignatureID
+    }
+
+    /// Подпись, которая подставляется автоматически (nil — без подписи).
+    func signature(for use: SignatureUse) -> MailSignature? {
+        guard let id = signatureID(for: use) else { return nil }
+        return signatureList.first { $0.id == id }
+    }
+
+    func signatureText(for use: SignatureUse) -> String {
+        signature(for: use)?.text ?? ""
+    }
+
+    /// Переносит старую подпись-строку в список подписей; подставляется и в новые письма, и в ответы.
+    mutating func migrateSignatures() {
+        guard signatures == nil else { return }
+        let legacy = signature.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !legacy.isEmpty else {
+            signatures = []
+            return
+        }
+        let main = MailSignature(name: "Основная", text: signature)
+        signatures = [main]
+        newMailSignatureID = main.id
+        replySignatureID = main.id
     }
 }

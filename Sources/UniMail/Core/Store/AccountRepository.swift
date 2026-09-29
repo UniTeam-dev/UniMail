@@ -11,6 +11,18 @@ enum AccountRepository {
     private static var file: URL { directory.appendingPathComponent("accounts.json") }
 
     static func load() -> [Account] {
+        let original = loadRaw()
+        var accounts = original
+        for index in accounts.indices { accounts[index].migrateSignatures() }
+        // Демо-ящики и перенос подписей сохраняем сразу: иначе при каждом запуске
+        // у ящиков были бы новые id (и открытые окна письма теряли бы отправителя).
+        if accounts != original || !FileManager.default.fileExists(atPath: file.path) {
+            save(accounts)
+        }
+        return accounts
+    }
+
+    private static func loadRaw() -> [Account] {
         guard let data = try? Data(contentsOf: file),
               let accounts = try? JSONDecoder().decode([Account].self, from: data) else {
             return defaultDemoAccounts

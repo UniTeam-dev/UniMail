@@ -501,6 +501,15 @@ final class MailStore {
     func account(_ id: UUID) -> Account? { accounts.first { $0.id == id } }
 
     func addAccount(_ account: Account, secret: String?) {
+        var account = account
+        account.migrateSignatures()
+        // Новый ящик сразу с подписью из имени отправителя — её можно поменять в настройках.
+        if account.signatureList.isEmpty, let name = account.senderName?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+            let main = MailSignature(name: "Основная", text: name)
+            account.signatures = [main]
+            account.newMailSignatureID = main.id
+            account.replySignatureID = main.id
+        }
         if let secret, !secret.isEmpty {
             try? Keychain.set(secret, for: account.id.uuidString)
         }
@@ -1092,8 +1101,13 @@ final class MailStore {
         var draft = OutgoingMessage(
             accountID: accountID, fromAddress: account.email,
             to: [], cc: [], bcc: [], subject: "",
-            body: account.signature.isEmpty ? "" : "\n\n--\n\(account.signature)"
+            body: ""
         )
+        // Подпись подставляется автоматически: своя для новых писем и для ответов/пересылок.
+        let signature = account.signatureText(for: mode == .new ? .newMail : .reply)
+        if mode != .draft && !signature.isEmpty {
+            draft.body = "\n\n--\n\(signature)"
+        }
         if let source {
             draft.threadID = source.threadID
             draft.inReplyTo = source.id

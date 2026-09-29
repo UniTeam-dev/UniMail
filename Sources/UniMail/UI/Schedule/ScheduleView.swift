@@ -32,12 +32,12 @@ struct ScheduleView: View {
                     .contentTransition(.opacity)
                 Spacer()
                 HStack(spacing: 2) {
-                    Button { shift(-1) } label: { Image(systemName: "chevron.left") }
+                    Button { shift(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 22).contentShape(Rectangle()) }
                         .buttonStyle(ToolbarIconStyle(width: 28, height: 26, radius: 7))
                     Button("Сегодня") { withAnimation(Motion.smooth) { day = .now } }
                         .buttonStyle(UMButtonStyle(kind: .secondary, height: 26, radius: 7, horizontal: 10))
                         .font(.system(size: 12, weight: .semibold))
-                    Button { shift(1) } label: { Image(systemName: "chevron.right") }
+                    Button { shift(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 22).contentShape(Rectangle()) }
                         .buttonStyle(ToolbarIconStyle(width: 28, height: 26, radius: 7))
                 }
                 SearchField(text: $store.searchText)
@@ -331,8 +331,8 @@ struct ScheduleSidebar: View {
                 Text(RelativeDate.monthTitle(month)).font(.system(size: 12.5, weight: .semibold))
                 Spacer()
                 HStack(spacing: 2) {
-                    Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
-                    Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
+                    Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 22).contentShape(Rectangle()) }
+                    Button { shiftMonth(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 22).contentShape(Rectangle()) }
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 12, weight: .medium))

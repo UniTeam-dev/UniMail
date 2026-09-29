@@ -351,7 +351,7 @@ struct ComposeView: View {
                     Button {
                         withAnimation(Motion.snappy) { draft.sendAt = nil }
                     } label: {
-                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).frame(width: 18)
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).frame(width: 18, height: 18).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -432,8 +432,8 @@ struct ComposeView: View {
                     Text(RelativeDate.monthTitle(calendarMonth)).font(.system(size: 13, weight: .semibold))
                     Spacer()
                     HStack(spacing: 2) {
-                        Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
-                        Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
+                        Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 22).contentShape(Rectangle()) }
+                        Button { shiftMonth(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 22).contentShape(Rectangle()) }
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .medium))

@@ -59,11 +59,13 @@ struct QuickReplyBar: View {
                     close()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12))
+                        .frame(width: 22, height: 22).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Открыть в отдельном окне")
                 Button(action: close) {
                     Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
+                        .frame(width: 22, height: 22).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)

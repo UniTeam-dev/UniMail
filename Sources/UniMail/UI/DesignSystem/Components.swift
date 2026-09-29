@@ -562,6 +562,7 @@ struct AttachmentChip: View {
             if removable {
                 Button { onRemove?() } label: {
                     Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(UM.fg3)
+                        .frame(width: 16, height: 16).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .padding(.leading, 4)

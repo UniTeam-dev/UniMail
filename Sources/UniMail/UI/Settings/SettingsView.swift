@@ -34,6 +34,7 @@ private struct AccountsSettings: View {
     @Environment(MailStore.self) private var store
     @State private var selection: UUID?
     @State private var adding = false
+    @State private var pendingRemoval: Account?
 
     var body: some View {
         @Bindable var store = store
@@ -58,14 +59,18 @@ private struct AccountsSettings: View {
                     .padding(4)
                 }
                 HStack(spacing: 0) {
-                    Button { adding = true } label: { Image(systemName: "plus").frame(width: 28, height: 28) }
+                    // contentShape: у .plain-кнопки иначе кликабелен только сам тонкий значок.
+                    Button { adding = true } label: {
+                        Image(systemName: "plus").frame(width: 28, height: 28).contentShape(Rectangle())
+                    }
+                    .help("Добавить ящик")
                     Rectangle().fill(UM.sep).frame(width: 0.5)
                     Button {
-                        let removed = selection
-                        selection = nil
-                        if let removed { store.removeAccount(removed) }
-                        selection = store.accounts.first?.id
-                    } label: { Image(systemName: "minus").frame(width: 28, height: 28) }
+                        pendingRemoval = selection.flatMap { store.account($0) }
+                    } label: {
+                        Image(systemName: "minus").frame(width: 28, height: 28).contentShape(Rectangle())
+                    }
+                    .help("Удалить ящик")
                     .disabled(selection == nil)
                     Rectangle().fill(UM.sep).frame(width: 0.5)
                     Spacer()
@@ -96,6 +101,31 @@ private struct AccountsSettings: View {
         .padding(16)
         .sheet(isPresented: $adding) { AddAccountView() }
         .onAppear { selection = selection ?? store.accounts.first?.id }
+        .onChange(of: store.accounts.map(\.id)) { _, ids in
+            // Ящик удалили (здесь или из панели аккаунтов) — выделяем первый оставшийся.
+            if let current = selection, !ids.contains(current) { selection = ids.first }
+            if selection == nil { selection = ids.first }
+        }
+        .confirmationDialog(
+            "Удалить ящик «\(pendingRemoval?.displayName ?? "")»?",
+            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Удалить", role: .destructive) {
+                if let account = pendingRemoval { remove(account.id) }
+                pendingRemoval = nil
+            }
+            Button("Отмена", role: .cancel) { pendingRemoval = nil }
+        } message: {
+            Text(pendingRemoval?.kind == .demo
+                 ? "Демо-письма этого ящика исчезнут."
+                 : "Письма и пароль удалятся с этого Mac. На сервере почта останется.")
+        }
+    }
+
+    private func remove(_ id: UUID) {
+        withAnimation(Motion.snappy) { store.removeAccount(id) }
+        selection = store.accounts.first?.id
     }
 
     private func accountRow(_ account: Account) -> some View {
@@ -136,6 +166,22 @@ private struct AccountsSettings: View {
                 Text("\(account.wrappedValue.email) · \(account.wrappedValue.providerTitle)")
                     .foregroundStyle(UM.fg3)
                     .lineLimit(1)
+            }
+            if account.wrappedValue.kind == .demo {
+                GridRow(alignment: .top) {
+                    label("Демо")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Ящик с примерами писем из макета — без сервера. Когда подключите свои ящики, демо можно убрать.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(UM.fg3)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Удалить все демо-ящики", role: .destructive) {
+                            withAnimation(Motion.snappy) { store.removeDemoAccounts() }
+                            selection = store.accounts.first?.id
+                        }
+                        .buttonStyle(UMButtonStyle(kind: .secondary, height: 26, radius: 7, horizontal: 10))
+                    }
+                }
             }
             if account.wrappedValue.kind != .demo {
                 GridRow {
@@ -217,6 +263,8 @@ private struct SignaturesEditor: View {
                             remove(item.id)
                         } label: {
                             Image(systemName: "trash").font(.system(size: 11))
+                                .frame(width: 22, height: 22)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(UM.fg3)

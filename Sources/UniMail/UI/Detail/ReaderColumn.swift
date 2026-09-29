@@ -194,6 +194,7 @@ struct SearchField: View {
             if !text.isEmpty {
                 Button { text = "" } label: {
                     Image(systemName: "xmark.circle.fill").font(.system(size: 12))
+                        .frame(width: 18, height: 18).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity)

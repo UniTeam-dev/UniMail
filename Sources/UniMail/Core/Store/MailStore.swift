@@ -575,6 +575,13 @@ final class MailStore {
         }
     }
 
+    /// Убрать все демо-ящики разом.
+    func removeDemoAccounts() {
+        for account in accounts where account.kind == .demo {
+            removeAccount(account.id)
+        }
+    }
+
     func moveAccounts(from source: IndexSet, to destination: Int) {
         let moving = source.sorted().map { accounts[$0] }
         var rest = accounts.enumerated().filter { !source.contains($0.offset) }.map(\.element)

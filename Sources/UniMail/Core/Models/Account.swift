@@ -13,7 +13,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .gmail: "Gmail"
-        case .outlook: "Outlook / Microsoft 365"
+        case .outlook: "Корпоративный Outlook"
         case .icloud: "iCloud"
         case .imap: "Другой IMAP"
         case .demo: "Демо-аккаунт"
@@ -22,8 +22,8 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var subtitle: String {
         switch self {
-        case .gmail: "Вход через Google"
-        case .outlook: "Вход через Microsoft, включая Exchange Online"
+        case .gmail: "IMAP + пароль приложения Google"
+        case .outlook: "Exchange: доменный логин и пароль"
         case .icloud: "Нужен пароль приложения с appleid.apple.com"
         case .imap: "Яндекс, Mail.ru, корпоративная почта"
         case .demo: "Тестовые письма, чтобы посмотреть интерфейс"
@@ -42,6 +42,9 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
 
     /// Этап плана, на котором появится настоящая синхронизация.
     var isAvailable: Bool { self == .demo }
+
+    /// Все реальные аккаунты подключаются по IMAP/SMTP с паролем.
+    var usesPassword: Bool { self != .demo }
 }
 
 /// Цвет аккаунта — метка в едином ящике и в панели аккаунтов.

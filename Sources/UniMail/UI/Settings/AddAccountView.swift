@@ -82,7 +82,7 @@ struct AddAccountView: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 if let kind {
-                    Button(kind == .gmail || kind == .outlook ? "Войти" : "Добавить") { add(kind) }
+                    Button("Добавить") { add(kind) }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
                         .disabled(!canAdd(kind))
@@ -134,8 +134,11 @@ struct AddAccountView: View {
                     .onChange(of: email) { _, value in
                         if let preset = ServerPresets.settings(for: value) { server = preset }
                     }
-                if kind == .imap || kind == .icloud {
-                    SecureField(kind == .icloud ? "Пароль приложения" : "Пароль", text: $password)
+                if kind.usesPassword {
+                    SecureField(kind == .icloud || kind == .gmail ? "Пароль приложения" : "Пароль", text: $password)
+                    if let help = passwordHelp(kind) {
+                        Link(help.title, destination: help.url).font(.caption)
+                    }
                 }
                 Picker("Цвет", selection: $tint) {
                     ForEach(AccountTint.allCases, id: \.self) { t in
@@ -145,7 +148,7 @@ struct AddAccountView: View {
                 }
             }
 
-            if kind == .imap {
+            if kind == .imap || kind == .outlook {
                 Section(isExpanded: $showServer) {
                     TextField("IMAP-сервер", text: $server.imapHost)
                     TextField("IMAP-порт", value: $server.imapPort, format: .number.grouping(.never))
@@ -162,17 +165,25 @@ struct AddAccountView: View {
 
     private func stageNote(_ kind: ProviderKind) -> String {
         switch kind {
-        case .gmail: "Вход через Google появится на этапе 3. Аккаунт сохранится, синхронизация включится после обновления."
-        case .outlook: "Вход через Microsoft появится на этапе 4. Аккаунт сохранится, синхронизация включится после обновления."
+        case .gmail: "IMAP появится на этапе 2. Нужна двухэтапная аутентификация и пароль приложения Google; пароль уже сейчас сохраняется в Связке ключей."
+        case .outlook: "IMAP появится на этапе 2. Укажите сервер Exchange (например, mail.company.ru). Если сервер outlook.office365.com, нужен OAuth — это этап 4."
         case .icloud, .imap: "IMAP/SMTP появится на этапе 2. Пароль уже сейчас сохраняется в Связке ключей."
         case .demo: ""
+        }
+    }
+
+    private func passwordHelp(_ kind: ProviderKind) -> (title: String, url: URL)? {
+        switch kind {
+        case .gmail: return ("Как получить пароль приложения Google", URL(string: "https://myaccount.google.com/apppasswords")!)
+        case .icloud: return ("Как получить пароль приложения Apple", URL(string: "https://account.apple.com")!)
+        default: return nil
         }
     }
 
     private func canAdd(_ kind: ProviderKind) -> Bool {
         let emailOK = email.contains("@")
         switch kind {
-        case .imap, .icloud: return emailOK && !password.isEmpty
+        case .imap, .icloud, .gmail, .outlook: return emailOK && !password.isEmpty
         default: return emailOK
         }
     }
@@ -183,7 +194,7 @@ struct AddAccountView: View {
             email: email.trimmingCharacters(in: .whitespaces),
             kind: kind,
             tint: tint,
-            server: (kind == .imap || kind == .icloud) ? server : nil
+            server: kind.usesPassword ? server : nil
         )
         store.addAccount(account, secret: password.isEmpty ? nil : password)
         dismiss()

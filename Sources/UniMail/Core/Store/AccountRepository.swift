@@ -15,6 +15,11 @@ enum AccountRepository {
               let accounts = try? JSONDecoder().decode([Account].self, from: data) else {
             return defaultDemoAccounts
         }
+        // Старые демо-ящики первой сборки заменяем на ящики из макета.
+        let legacy: Set<String> = ["il1ja@company.ru", "il1ja.home@gmail.com", "il1ja@icloud.com"]
+        if !accounts.isEmpty && accounts.allSatisfy({ $0.kind == .demo && legacy.contains($0.email) }) {
+            return defaultDemoAccounts
+        }
         return accounts
     }
 
@@ -29,13 +34,17 @@ enum AccountRepository {
         }
     }
 
-    /// При первом запуске — три демо-аккаунта, чтобы было на что посмотреть.
-    /// Почта подобрана так, чтобы DemoProvider выдал три разных набора писем.
+    /// При первом запуске — три демо-ящика из макета, чтобы было на что посмотреть.
     static var defaultDemoAccounts: [Account] {
         [
-            Account(displayName: "Работа", email: "il1ja@company.ru", kind: .demo, tint: .blue),
-            Account(displayName: "Личная", email: "il1ja.home@gmail.com", kind: .demo, tint: .orange),
-            Account(displayName: "iCloud", email: "il1ja@icloud.com", kind: .demo, tint: .purple),
+            Account(displayName: "Работа", email: "a.volkova@severlab.ru", kind: .demo, tint: .blue,
+                    signature: "Анна Волкова\nВедущий дизайнер · Северлаб", aliases: ["design@severlab.ru"],
+                    senderName: "Анна Волкова", providerLabel: "Google Workspace"),
+            Account(displayName: "Личное", email: "anna.volkova@icloud.com", kind: .demo, tint: .orange,
+                    signature: "Аня", senderName: "Анна Волкова", providerLabel: "iCloud"),
+            Account(displayName: "Студия", email: "hello@volkova.studio", kind: .demo, tint: .purple,
+                    signature: "Volkova Studio — интерфейсы и шрифт", senderName: "Анна Волкова",
+                    providerLabel: "IMAP · Fastmail"),
         ]
     }
 }

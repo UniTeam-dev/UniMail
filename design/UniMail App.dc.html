@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=block">
+<style>
+body{margin:0;-webkit-font-smoothing:antialiased}
+a{color:#3D6AF2;text-decoration:none}a:hover{text-decoration:underline}
+@keyframes um-spin{to{transform:rotate(360deg)}}
+@keyframes um-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes um-shadow{0%,100%{transform:scaleX(1);opacity:.5}50%{transform:scaleX(.8);opacity:.3}}
+</style>
+</helmet>
+<div style="{{ vars }}">
+<div onMouseDown="{{ activate }}" style="position:relative; width:{{ W }}px; height:{{ H }}px; border-radius:14px; overflow:hidden; background:var(--win); color:var(--fg); font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, sans-serif; font-size:13px; display:flex; box-shadow:0 0 0 0.5px var(--frame), 0 24px 70px rgba(0,0,0,0.22); user-select:none; cursor:default">
+
+  <div style="position:absolute; left:20px; top:19px; display:flex; gap:8px; z-index:5">
+    <div style="width:12px; height:12px; border-radius:50%; background:#FF5F57; box-shadow:inset 0 0 0 0.5px rgba(0,0,0,0.15)"></div>
+    <div style="width:12px; height:12px; border-radius:50%; background:#FEBC2E; box-shadow:inset 0 0 0 0.5px rgba(0,0,0,0.15)"></div>
+    <div style="width:12px; height:12px; border-radius:50%; background:#28C840; box-shadow:inset 0 0 0 0.5px rgba(0,0,0,0.15)"></div>
+  </div>
+
+  <div style="display:flex; flex:none; background:var(--side); backdrop-filter:blur(40px) saturate(1.8); border-right:0.5px solid var(--sep)">
+    <div style="position:relative; width:66px; background:var(--rail); border-right:0.5px solid var(--sep)">
+      <div style="position:absolute; left:7px; top:0; width:52px; height:52px; border-radius:15px; background:var(--selSide); transform:translateY({{ railY }}px); transition:{{ springT }}"></div>
+      <div style="position:absolute; left:0; top:16px; width:4px; height:20px; border-radius:0 3px 3px 0; background:var(--fg); transform:translateY({{ railY }}px); transition:{{ springT }}"></div>
+      <div onClick="{{ goAll }}" title="Все ящики" style="position:absolute; left:13px; top:52px; width:40px; height:40px; border-radius:12px; background:linear-gradient(145deg, #5C59E6, #3B82F6 45%, #14B8BF); display:grid; place-items:center; color:#fff; box-shadow:inset 0 0 0 0.5px rgba(255,255,255,0.3), 0 2px 6px rgba(59,90,230,0.3); transition:transform .2s cubic-bezier(.34,1.8,.64,1)" style-active="transform:scale(0.9)">
+        <span style="font-family:'Material Symbols Rounded'; font-size:21px; line-height:1; font-variation-settings:'FILL' 1, 'wght' 500">all_inbox</span>
+      </div>
+      <div style="position:absolute; left:20px; right:20px; top:104px; height:1px; background:var(--sepStrong)"></div>
+      <sc-for list="{{ railAccs }}" as="a" hint-placeholder-count="3">
+        <div onClick="{{ a.onClick }}" title="{{ a.name }}" style="position:absolute; left:13px; top:{{ a.top }}px; width:40px; height:40px">
+          {{ a.ring }}
+          <div style="width:40px; height:40px; border-radius:12px; background:{{ a.color }}; color:#fff; display:grid; place-items:center; font-size:15px; font-weight:650; box-shadow:inset 0 0 0 0.5px rgba(255,255,255,0.25), 0 1px 3px rgba(0,0,0,0.12); transition:transform .2s cubic-bezier(.34,1.8,.64,1)" style-active="transform:scale(0.9)">{{ a.ini }}</div>
+          <sc-if value="{{ a.showBadge }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; right:-7px; top:-6px; min-width:18px; height:18px; padding:0 5px; box-sizing:border-box; border-radius:9px; background:#F04545; color:#fff; font-size:11px; font-weight:650; display:grid; place-items:center; box-shadow:0 0 0 2px var(--railSolid); font-variant-numeric:tabular-nums">{{ a.badge }}</div>
+          </sc-if>
+          <sc-if value="{{ a.err }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; right:-5px; bottom:-5px; width:17px; height:17px; border-radius:50%; background:#FA8C33; color:#fff; display:grid; place-items:center; font-size:11px; font-weight:800; box-shadow:0 0 0 2px var(--railSolid)">!</div>
+          </sc-if>
+        </div>
+      </sc-for>
+      <div style="position:absolute; left:0; right:0; bottom:14px; display:flex; flex-direction:column; align-items:center; gap:12px">
+        <div onClick="{{ openAdd }}" title="Добавить аккаунт" style="width:38px; height:38px; box-sizing:border-box; border-radius:12px; border:1.5px dashed var(--fg3); color:var(--fg2); display:grid; place-items:center" style-hover="background:var(--hover)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:20px; line-height:1">add</span>
+        </div>
+        <div title="Настройки" style="width:32px; height:32px; border-radius:9px; color:var(--fg2); display:grid; place-items:center" style-hover="background:var(--hover)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:20px; line-height:1">settings</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="width:{{ foldW }}px; display:flex; flex-direction:column; min-height:0">
+      <div style="height:52px; flex:none"></div>
+      <div style="overflow:hidden; padding:0 16px 14px; flex:none">
+        <div style="opacity:{{ hdrOp }}; transform:translateY({{ hdrY }}px); transition:{{ fadeT }}">
+          <div style="font-size:15px; font-weight:650; letter-spacing:-0.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ boxTitle }}</div>
+          <div style="font-size:12px; color:var(--fg3); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ boxSub }}</div>
+        </div>
+      </div>
+      <sc-if value="{{ isMail }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative; padding:0 10px">
+          <div style="position:absolute; left:10px; right:10px; top:0; height:30px; border-radius:8px; background:var(--selSide); transform:translateY({{ folderY }}px); transition:{{ springT }}"></div>
+          <sc-for list="{{ folders }}" as="f" hint-placeholder-count="6">
+            <div onClick="{{ f.onClick }}" style="position:relative; height:30px; margin-bottom:2px; display:flex; align-items:center; gap:9px; padding:0 8px 0 9px; border-radius:8px; color:var(--fg)">
+              <span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1; width:20px; color:{{ f.iconColor }}; font-variation-settings:'FILL' {{ f.fill }}">{{ f.i }}</span>
+              <div style="flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; font-weight:{{ f.weight }}">{{ f.t }}</div>
+              <sc-if value="{{ f.hasCount }}" hint-placeholder-val="{{ false }}">
+                <div style="min-width:20px; height:18px; box-sizing:border-box; padding:0 6px; border-radius:9px; background:{{ f.pillBg }}; color:{{ f.pillFg }}; font-size:11px; font-weight:600; display:grid; place-items:center; font-variant-numeric:tabular-nums; transition:all .3s cubic-bezier(.34,1.6,.64,1)">{{ f.c }}</div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <div style="height:32px; display:flex; align-items:flex-end; padding:0 9px 6px; box-sizing:border-box; font-size:11px; font-weight:650; color:var(--fg3)">Ещё</div>
+          <sc-for list="{{ more }}" as="f" hint-placeholder-count="3">
+            <div onClick="{{ f.onClick }}" style="position:relative; height:30px; margin-bottom:2px; display:flex; align-items:center; gap:9px; padding:0 8px 0 9px; border-radius:8px">
+              <span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1; width:20px; color:{{ f.iconColor }}; font-variation-settings:'FILL' {{ f.fill }}">{{ f.i }}</span>
+              <div style="flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; font-weight:{{ f.weight }}">{{ f.t }}</div>
+              <sc-if value="{{ f.hasCount }}" hint-placeholder-val="{{ false }}">
+                <div style="min-width:20px; height:18px; box-sizing:border-box; padding:0 6px; border-radius:9px; background:{{ f.pillBg }}; color:{{ f.pillFg }}; font-size:11px; font-weight:600; display:grid; place-items:center">{{ f.c }}</div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ isAll }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:0 10px; margin-top:6px">
+            <div style="height:32px; display:flex; align-items:flex-end; padding:0 9px 6px; box-sizing:border-box; font-size:11px; font-weight:650; color:var(--fg3)">Показывать ящики</div>
+            <sc-for list="{{ eyes }}" as="e" hint-placeholder-count="3">
+              <div onClick="{{ e.onClick }}" style="height:28px; display:flex; align-items:center; gap:10px; padding:0 8px 0 13px; border-radius:8px; opacity:{{ e.op }}; transition:opacity .2s" style-hover="background:var(--hover)">
+                <div style="width:9px; height:9px; border-radius:3px; background:{{ e.color }}"></div>
+                <div style="flex:1; font-size:13px">{{ e.name }}</div>
+                <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1; color:var(--fg3)">{{ e.icon }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </sc-if>
+      <sc-if value="{{ isSchedule }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:0 14px">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:0 2px 8px">
+            <div style="font-size:12.5px; font-weight:650">Сентябрь 2026</div>
+            <div style="display:flex; gap:2px; color:var(--fg3)">
+              <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">chevron_left</span>
+              <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">chevron_right</span>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(7, 1fr); row-gap:2px; text-align:center">
+            <sc-for list="{{ weekdays }}" as="w" hint-placeholder-count="7"><div style="font-size:10px; font-weight:600; color:var(--fg3); padding-bottom:4px">{{ w }}</div></sc-for>
+            <sc-for list="{{ calDays }}" as="d" hint-placeholder-count="35">
+              <div style="display:grid; place-items:center; height:24px; position:relative">
+                <div style="width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:{{ d.w }}; background:{{ d.bg }}; color:{{ d.fg }}; font-variant-numeric:tabular-nums">{{ d.n }}</div>
+                <sc-if value="{{ d.dot }}" hint-placeholder-val="{{ false }}"><div style="position:absolute; bottom:0; width:3px; height:3px; border-radius:50%; background:var(--fg3)"></div></sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="height:32px; display:flex; align-items:flex-end; padding:0 2px 6px; box-sizing:border-box; font-size:11px; font-weight:650; color:var(--fg3); margin-top:6px">Календари</div>
+          <sc-for list="{{ calAccs }}" as="c" hint-placeholder-count="3">
+            <div style="height:28px; display:flex; align-items:center; gap:10px; padding:0 4px">
+              <div style="width:14px; height:14px; border-radius:4px; background:{{ c.color }}; display:grid; place-items:center; color:#fff">
+                <span style="font-family:'Material Symbols Rounded'; font-size:12px; line-height:1; font-variation-settings:'wght' 600">check</span>
+              </div>
+              <div style="font-size:13px">{{ c.name }}</div>
+            </div>
+          </sc-for>
+          <div style="height:32px; display:flex; align-items:flex-end; padding:0 2px 6px; box-sizing:border-box; font-size:11px; font-weight:650; color:var(--fg3)">На ленте</div>
+          <sc-for list="{{ layers }}" as="l" hint-placeholder-count="3">
+            <div onClick="{{ l.onClick }}" style="height:28px; display:flex; align-items:center; gap:9px; padding:0 4px; border-radius:7px" style-hover="background:var(--hover)">
+              <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1; color:var(--fg2)">{{ l.icon }}</span>
+              <div style="flex:1; font-size:12.5px">{{ l.t }}</div>
+              <div style="width:26px; height:16px; border-radius:8px; background:{{ l.trackBg }}; position:relative; transition:background .2s">
+                <div style="position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.25); transform:translateX({{ l.knobX }}px); transition:transform .25s cubic-bezier(.34,1.5,.64,1)"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="flex:1"></div>
+      <div style="padding:10px 16px 14px; display:flex; align-items:center; gap:7px; font-size:11.5px; color:{{ syncColor }}; border-top:0.5px solid var(--sep)">
+        <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1">{{ syncIcon }}</span>
+        <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ syncText }}</div>
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{ isMail }}" hint-placeholder-val="{{ true }}">
+    <div style="width:{{ listW }}px; flex:none; display:flex; flex-direction:column; background:var(--list); border-right:0.5px solid var(--sep); min-height:0">
+      <div style="height:52px; flex:none; display:flex; align-items:center; gap:8px; padding:0 12px 0 14px">
+        <div style="display:flex; padding:2px; border-radius:9px; background:var(--seg)">
+          <div style="height:24px; display:flex; align-items:center; gap:5px; padding:0 10px; border-radius:7px; background:var(--segThumb); box-shadow:0 1px 2px rgba(0,0,0,0.1); font-size:12px; font-weight:600">
+            <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1">mail</span>Почта</div>
+          <div onClick="{{ goSchedule }}" style="height:24px; display:flex; align-items:center; gap:5px; padding:0 10px; border-radius:7px; font-size:12px; color:var(--fg2)" style-hover="color:var(--fg)">
+            <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1">calendar_month</span>Расписание</div>
+        </div>
+        <div style="flex:1"></div>
+        <div title="Фильтр" style="width:32px; height:28px; border-radius:8px; display:grid; place-items:center; color:var(--fg2); transition:transform .2s cubic-bezier(.34,1.8,.64,1)" style-hover="background:var(--hover)" style-active="transform:scale(0.86)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">filter_list</span></div>
+        <div title="Новое письмо" onClick="{{ openCompose }}" style="width:32px; height:28px; border-radius:8px; display:grid; place-items:center; color:var(--fg2); transition:transform .2s cubic-bezier(.34,1.8,.64,1)" style-hover="background:var(--hover)" style-active="transform:scale(0.86)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">edit_square</span></div>
+      </div>
+      <div style="padding:4px 18px 12px; flex:none; opacity:{{ listOp }}; transform:translateY({{ listY }}px); transition:{{ fadeT }}">
+        <div style="display:flex; align-items:baseline; gap:10px">
+          <div style="font-size:26px; font-weight:700; letter-spacing:-0.022em; line-height:1.15">{{ listTitle }}</div>
+          <div style="font-size:12.5px; color:var(--fg3); font-variant-numeric:tabular-nums; margin-left:8px">{{ listSub }}</div>
+        </div>
+        <sc-if value="{{ showCats }}" hint-placeholder-val="{{ true }}">
+          <div style="position:relative; margin-top:12px; padding:2px; border-radius:9px; background:var(--seg); display:grid; grid-template-columns:repeat(4, minmax(0, 1fr))">
+            <div style="position:absolute; left:2px; top:2px; bottom:2px; width:calc((100% - 4px) / 4); border-radius:7px; background:var(--segThumb); box-shadow:0 1px 2px rgba(0,0,0,0.1), 0 0 0 0.5px rgba(0,0,0,0.04); transform:translateX({{ catX }}%); transition:{{ springT }}"></div>
+            <sc-for list="{{ cats }}" as="c" hint-placeholder-count="4">
+              <div onClick="{{ c.onClick }}" style="position:relative; height:24px; line-height:24px; text-align:center; padding:0 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:{{ catFs }}px; font-weight:{{ c.w }}; color:{{ c.fg }}; transition:color .2s">{{ c.t }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+      <div style="flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding-bottom:12px; opacity:{{ listOp }}; transform:translateY({{ listY }}px); transition:{{ fadeT }}">
+        <sc-if value="{{ errBanner }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:0 10px 10px; padding:14px 14px 14px 14px; border-radius:12px; background:var(--warnBg); display:flex; gap:12px">
+            <div style="width:28px; height:28px; flex:none; border-radius:8px; background:#FA8C33; color:#fff; display:grid; place-items:center">
+              <span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1; font-variation-settings:'FILL' 1">sync_problem</span></div>
+            <div style="flex:1; min-width:0">
+              <div style="font-size:13px; font-weight:650">Не удалось синхронизировать «Студия»</div>
+              <div style="font-size:12px; color:var(--fg2); margin-top:3px; line-height:1.4; text-wrap:pretty">Сервер imap.fastmail.com отклонил пароль. Скачанные ранее письма доступны офлайн.</div>
+              <div style="display:flex; gap:8px; margin-top:10px">
+                <div style="height:26px; padding:0 12px; border-radius:7px; background:var(--accent); color:#fff; font-size:12px; font-weight:600; display:grid; place-items:center">Ввести пароль</div>
+                <div style="height:26px; padding:0 12px; border-radius:7px; background:var(--field); font-size:12px; font-weight:500; display:grid; place-items:center">Повторить</div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="7">
+          <div style="position:relative; overflow:hidden; max-height:{{ r.maxH }}px; opacity:{{ r.op }}; transition:{{ rowT }}">
+            <sc-if value="{{ r.swipeR }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute; top:1px; bottom:1px; left:8px; right:8px; border-radius:10px; background:#33BD73; color:#fff; display:flex; align-items:center; gap:7px; padding-left:20px; font-size:13px; font-weight:650">
+                <span style="font-family:'Material Symbols Rounded'; font-size:20px; line-height:1; font-variation-settings:'FILL' 1">archive</span>Архив</div>
+            </sc-if>
+            <sc-if value="{{ r.swipeL }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute; top:1px; bottom:1px; left:8px; right:8px; border-radius:10px; background:#FA8C33; color:#fff; display:flex; align-items:center; justify-content:flex-end; gap:7px; padding-right:20px; font-size:13px; font-weight:650">Отложить
+                <span style="font-family:'Material Symbols Rounded'; font-size:20px; line-height:1; font-variation-settings:'FILL' 1">schedule</span></div>
+            </sc-if>
+            <div onClick="{{ r.onClick }}" style="position:relative; margin:0 8px 1px; padding:{{ dz.pad }}; border-radius:10px; background:{{ r.bg }}; box-shadow:{{ r.shadow }}; transform:translateX({{ r.tx }}px); transition:transform .3s cubic-bezier(.2,.8,.2,1), background .15s; display:flex; gap:9px; align-items:flex-start" style-hover="filter:brightness(0.985)">
+              <div style="width:8px; flex:none; height:{{ dz.dotH }}px; display:flex; align-items:center; justify-content:center">
+                <div style="width:8px; height:8px; border-radius:50%; background:var(--accent); opacity:{{ r.dotOp }}; transform:scale({{ r.dotScale }}); transition:opacity .2s, transform .35s cubic-bezier(.34,1.8,.64,1)"></div>
+              </div>
+              <div style="position:relative; flex:none; width:{{ dz.av }}px; height:{{ dz.av }}px; border-radius:50%; background:{{ r.avBg }}; color:{{ r.avFg }}; display:grid; place-items:center; font-size:{{ dz.avFs }}px; font-weight:650">{{ r.ini }}
+                <sc-if value="{{ r.showAccDot }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute; right:-2px; bottom:-2px; width:10px; height:10px; border-radius:50%; background:{{ r.accColor }}; box-shadow:0 0 0 2px {{ r.ringBg }}"></div>
+                </sc-if>
+              </div>
+              <div style="flex:1; min-width:0">
+                <div style="display:flex; align-items:center; gap:5px; height:18px">
+                  <div style="font-size:13px; font-weight:{{ r.nameW }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0">{{ r.name }}</div>
+                  <sc-if value="{{ r.showCount }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:11px; font-weight:600; color:var(--fg3); padding:0 5px; height:16px; border-radius:5px; background:var(--seg); display:grid; place-items:center; font-variant-numeric:tabular-nums">{{ r.count }}</div>
+                  </sc-if>
+                  <div style="flex:1"></div>
+                  <sc-if value="{{ r.attach }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-family:'Material Symbols Rounded'; font-size:14px; line-height:1; color:var(--fg3); transform:rotate(45deg)">attach_file</span>
+                  </sc-if>
+                  <sc-if value="{{ r.flag }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-family:'Material Symbols Rounded'; font-size:14px; line-height:1; color:#FA8C33; font-variation-settings:'FILL' 1">flag</span>
+                  </sc-if>
+                  <div style="font-size:11.5px; color:{{ r.timeFg }}; font-variant-numeric:tabular-nums; white-space:nowrap">{{ r.time }}</div>
+                </div>
+                <div style="font-size:{{ dz.subjFs }}px; line-height:1.35; font-weight:{{ r.subjW }}; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:{{ dz.subjTop }}px">{{ r.subject }}<sc-if value="{{ dz.inline }}" hint-placeholder-val="{{ false }}"><span style="color:var(--fg3); font-weight:400">  —  {{ r.preview }}</span></sc-if></div>
+                <sc-if value="{{ dz.showPreview }}" hint-placeholder-val="{{ true }}">
+                  <div style="font-size:12.5px; line-height:1.4; color:var(--fg3); margin-top:2px; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden">{{ r.preview }}</div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ zeroState }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:90px 36px 0; text-align:center; display:flex; flex-direction:column; align-items:center">
+            <div style="font-size:44px; line-height:1">☕️</div>
+            <div style="font-size:17px; font-weight:650; margin-top:16px; letter-spacing:-0.01em">Входящие разобраны ☕️</div>
+            <div style="font-size:12.5px; color:var(--fg3); margin-top:6px; line-height:1.45; text-wrap:pretty; max-width:260px">Новых писем нет. Следующее отложенное вернётся завтра в 08:00.</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ searchEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:90px 36px 0; text-align:center; display:flex; flex-direction:column; align-items:center">
+            <div style="width:56px; height:56px; border-radius:16px; background:var(--seg); color:var(--fg3); display:grid; place-items:center">
+              <span style="font-family:'Material Symbols Rounded'; font-size:30px; line-height:1">search_off</span></div>
+            <div style="font-size:17px; font-weight:650; margin-top:16px">Ничего не нашлось</div>
+            <div style="font-size:12.5px; color:var(--fg3); margin-top:6px; line-height:1.45; text-wrap:pretty; max-width:270px">По запросу «{{ q }}» нет писем ни в одном ящике. Попробуйте другие слова или поищите в архиве.</div>
+            <div style="margin-top:16px; height:28px; padding:0 14px; border-radius:8px; background:var(--field); font-size:12.5px; font-weight:500; display:grid; place-items:center">Искать в архиве и корзине</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ folderEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:90px 36px 0; text-align:center; color:var(--fg3); font-size:12.5px">В этой папке пусто</div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; min-height:0; background:var(--win); position:relative">
+      <div style="height:52px; flex:none; display:flex; align-items:center; gap:6px; padding:0 14px 0 16px; border-bottom:0.5px solid var(--tbSep)">
+        <div style="display:flex; border-radius:9px; background:var(--field); padding:2px">
+          <div onClick="{{ doReply }}" title="Ответить · R" style="width:32px; height:26px; border-radius:7px; display:grid; place-items:center; color:var(--fg2); transition:transform .2s cubic-bezier(.34,1.9,.64,1)" style-hover="background:var(--hover); color:var(--fg)" style-active="transform:scale(0.84)">
+            <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">reply</span></div>
+          <div title="Ответить всем" style="width:32px; height:26px; border-radius:7px; display:grid; place-items:center; color:var(--fg2); transition:transform .2s cubic-bezier(.34,1.9,.64,1)" style-hover="background:var(--hover); color:var(--fg)" style-active="transform:scale(0.84)">
+            <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">reply_all</span></div>
+          <div title="Переслать" style="width:32px; height:26px; border-radius:7px; display:grid; place-items:center; color:var(--fg2); transition:transform .2s cubic-bezier(.34,1.9,.64,1)" style-hover="background:var(--hover); color:var(--fg)" style-active="transform:scale(0.84)">
+            <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">forward</span></div>
+        </div>
+        <div style="width:6px"></div>
+        <div onClick="{{ doArchive }}" title="Архив · E" style="width:32px; height:28px; border-radius:8px; display:grid; place-items:center; color:var(--fg2); transition:transform .2s cubic-bezier(.34,1.9,.64,1)" style-hover="background:var(--hover); color:var(--fg)" style-active="transform:scale(0.84)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">archive</span></div>
+        <div onClick="{{ doDelete }}" title="Удалить" style="width:32px; height:28px; border-radius:8px; display:grid; place-items:center; color:var(--fg2); transition:transform .2s cubic-bezier(.34,1.9,.64,1)" style-hover="background:var(--hover); color:var(--fg)" style-active="transform:scale(0.84)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">delete</span></div>
+        <div onClick="{{ doFlag }}" title="Флажок" style="width:32px; height:28px; border-radius:8px; display:grid; place-items:center; color:{{ flagBtnFg }}; transition:transform .2s cubic-bezier(.34,1.9,.64,1)" style-hover="background:var(--hover)" style-active="transform:scale(0.84)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1; font-variation-settings:'FILL' {{ flagFill }}; transform:scale({{ flagScale }}); transition:transform .4s cubic-bezier(.34,2.2,.64,1)">flag</span></div>
+        <div onClick="{{ toggleSnooze }}" title="Отложить · H" style="height:28px; padding:0 4px 0 7px; border-radius:8px; display:flex; align-items:center; color:{{ snoozeBtnFg }}; background:{{ snoozeBtnBg }}; transition:transform .2s cubic-bezier(.34,1.9,.64,1)" style-hover="background:var(--hover)" style-active="transform:scale(0.88)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">schedule</span>
+          <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1">expand_more</span></div>
+        <div title="Ещё" style="width:32px; height:28px; border-radius:8px; display:grid; place-items:center; color:var(--fg2)" style-hover="background:var(--hover)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">more_horiz</span></div>
+        <div style="flex:1"></div>
+        <div style="width:{{ searchW }}px; height:28px; border-radius:8px; background:var(--field); display:flex; align-items:center; gap:6px; padding:0 8px; box-sizing:border-box; color:var(--fg3)">
+          <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">search</span>
+          <input value="{{ q }}" onChange="{{ onQ }}" placeholder="Поиск" style="flex:1; min-width:0; border:none; outline:none; background:transparent; font:inherit; font-size:12.5px; color:var(--fg)">
+          <sc-if value="{{ hasQ }}" hint-placeholder-val="{{ false }}">
+            <span onClick="{{ clearQ }}" style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1; font-variation-settings:'FILL' 1">cancel</span>
+          </sc-if>
+        </div>
+      </div>
+
+      <sc-if value="{{ hasThread }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1; min-height:0; overflow-y:auto">
+          <div style="max-width:740px; margin:0 auto; padding:26px 30px 20px">
+            <div style="font-size:23px; font-weight:700; letter-spacing:-0.02em; line-height:1.22; text-wrap:pretty">{{ th.subject }}</div>
+            <div style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap">
+              <div style="height:24px; display:flex; align-items:center; gap:6px; padding:0 10px 0 8px; border-radius:12px; background:{{ th.accTint }}; font-size:12px; font-weight:600; color:var(--fg)">
+                <div style="width:8px; height:8px; border-radius:3px; background:{{ th.accColor }}"></div>{{ th.accName }}</div>
+              <div style="height:24px; display:flex; align-items:center; gap:5px; padding:0 10px; border-radius:12px; background:var(--field); font-size:12px; color:var(--fg2)">
+                <span style="font-family:'Material Symbols Rounded'; font-size:14px; line-height:1">forum</span>{{ th.countLabel }}</div>
+              <sc-if value="{{ th.isNews }}" hint-placeholder-val="{{ false }}">
+                <div style="height:24px; display:flex; align-items:center; gap:5px; padding:0 10px; border-radius:12px; background:var(--field); font-size:12px; color:var(--fg2)">Рассылка · <span style="color:var(--accent); font-weight:500">Отписаться</span></div>
+              </sc-if>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-top:20px">
+              <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="2">
+                <sc-if value="{{ m.collapsed }}" hint-placeholder-val="{{ false }}">
+                  <div onClick="{{ m.toggle }}" style="display:flex; align-items:center; gap:12px; padding:11px 16px; border-radius:12px; background:var(--card); border:0.5px solid var(--cardBorder); box-shadow:var(--cardShadowSm)" style-hover="background:var(--cardHover)">
+                    <div style="width:26px; height:26px; flex:none; border-radius:50%; background:{{ m.avBg }}; color:{{ m.avFg }}; display:grid; place-items:center; font-size:10.5px; font-weight:650">{{ m.ini }}</div>
+                    <div style="font-size:13px; font-weight:600; white-space:nowrap">{{ m.from }}</div>
+                    <div style="flex:1; min-width:0; font-size:12.5px; color:var(--fg3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ m.short }}</div>
+                    <div style="font-size:12px; color:var(--fg3); white-space:nowrap">{{ m.time }}</div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ m.open }}" hint-placeholder-val="{{ true }}">
+                  <div style="border-radius:14px; background:var(--card); border:0.5px solid var(--cardBorder); box-shadow:var(--cardShadow); padding:18px 22px 22px">
+                    <div onClick="{{ m.toggle }}" style="display:flex; align-items:center; gap:12px">
+                      <div style="width:36px; height:36px; flex:none; border-radius:50%; background:{{ m.avBg }}; color:{{ m.avFg }}; display:grid; place-items:center; font-size:13px; font-weight:650">{{ m.ini }}</div>
+                      <div style="flex:1; min-width:0">
+                        <div style="display:flex; align-items:baseline; gap:6px">
+                          <div style="font-size:13.5px; font-weight:650; white-space:nowrap; flex:none">{{ m.from }}</div>
+                          <div style="font-size:12px; color:var(--fg3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0">{{ m.email }}</div>
+                        </div>
+                        <div style="font-size:12px; color:var(--fg3); margin-top:2px">кому: {{ m.to }}</div>
+                      </div>
+                      <div style="font-size:12px; color:var(--fg3); white-space:nowrap">{{ m.time }}</div>
+                    </div>
+                    <sc-if value="{{ m.priv }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:16px; display:flex; align-items:center; gap:9px; padding:8px 8px 8px 12px; border-radius:10px; background:var(--privBg); color:var(--privFg); font-size:12px">
+                        <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1; font-variation-settings:'FILL' 1">shield</span>
+                        <div style="flex:1; min-width:0; font-weight:500">{{ privText }}</div>
+                        <div onClick="{{ toggleImages }}" style="height:24px; padding:0 10px; border-radius:6px; background:var(--privBtn); color:var(--privFg); font-weight:650; display:grid; place-items:center; white-space:nowrap" style-hover="filter:brightness(1.05)">{{ privBtn }}</div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ m.hasInvite }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:16px; border-radius:12px; border:0.5px solid var(--cardBorder); background:var(--inset); padding:14px; display:flex; gap:14px; align-items:center">
+                        <div style="width:52px; flex:none; border-radius:10px; overflow:hidden; background:var(--card); box-shadow:0 0 0 0.5px var(--cardBorder), 0 1px 3px rgba(0,0,0,0.08); text-align:center">
+                          <div style="background:#F04545; color:#fff; font-size:10px; font-weight:700; letter-spacing:0.06em; padding:3px 0">{{ m.inv.mon }}</div>
+                          <div style="font-size:24px; font-weight:600; padding:3px 0 5px; letter-spacing:-0.02em">{{ m.inv.day }}</div>
+                        </div>
+                        <div style="flex:1; min-width:0">
+                          <div style="font-size:11px; font-weight:650; color:var(--fg3)">Приглашение на встречу</div>
+                          <div style="font-size:14.5px; font-weight:650; margin-top:2px">{{ m.inv.title }}</div>
+                          <div style="font-size:12px; color:var(--fg2); margin-top:3px">{{ m.inv.when }}</div>
+                          <div style="font-size:12px; color:var(--fg3); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ m.inv.where }}</div>
+                        </div>
+                      </div>
+                      <div style="display:flex; gap:6px; margin-top:8px">
+                        <sc-for list="{{ rsvp }}" as="b" hint-placeholder-count="3">
+                          <div onClick="{{ b.onClick }}" style="flex:1; height:30px; border-radius:8px; background:{{ b.bg }}; color:{{ b.fg }}; display:flex; align-items:center; justify-content:center; gap:5px; font-size:12.5px; font-weight:600; transition:background .2s, transform .2s cubic-bezier(.34,1.8,.64,1)" style-active="transform:scale(0.96)">
+                            <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1">{{ b.icon }}</span>{{ b.t }}</div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ m.hasCode }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:16px; border-radius:12px; background:var(--inset); border:0.5px solid var(--cardBorder); padding:18px 18px 18px 20px; display:flex; align-items:center; gap:16px">
+                        <div style="flex:1">
+                          <div style="font-size:11px; font-weight:650; color:var(--fg3)">Код подтверждения · действует 10 мин</div>
+                          <div style="font-family:'SF Mono', ui-monospace, Menlo, monospace; font-size:34px; font-weight:600; letter-spacing:0.12em; margin-top:4px; font-variant-numeric:tabular-nums">{{ m.code }}</div>
+                        </div>
+                        <div onClick="{{ copyCode }}" style="height:34px; padding:0 16px; border-radius:9px; background:#14B8BF; color:#fff; display:flex; align-items:center; gap:6px; font-size:13px; font-weight:650; box-shadow:0 1px 2px rgba(20,184,191,0.3); transition:transform .2s cubic-bezier(.34,1.8,.64,1)" style-active="transform:scale(0.94)">
+                          <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">{{ copyIcon }}</span>{{ copyLabel }}</div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ m.isText }}" hint-placeholder-val="{{ true }}">
+                      <div style="margin-top:16px; padding-left:48px; font-size:13.5px; line-height:1.6; color:var(--fg); user-select:text; text-wrap:pretty">
+                        <sc-for list="{{ m.paras }}" as="pp" hint-placeholder-count="3"><p style="margin:0 0 10px">{{ pp }}</p></sc-for>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ m.html }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:14px; border-radius:10px; background:#FFFFFF; color:#1A1A1A; box-shadow:0 0 0 0.5px rgba(0,0,0,0.08); overflow:hidden; font-family:Georgia, 'Times New Roman', serif">
+                        <div style="padding:22px 32px 16px; display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid #EEE">
+                          <div style="font-family:-apple-system, 'Helvetica Neue', sans-serif; font-weight:800; letter-spacing:0.28em; font-size:14px">ПОЛОСА</div>
+                          <div style="font-family:-apple-system, 'Helvetica Neue', sans-serif; font-size:11px; color:#777">Выпуск №42 · 29 сентября</div>
+                        </div>
+                        <sc-if value="{{ imgsHidden }}" hint-placeholder-val="{{ true }}">
+                          <div style="margin:20px 32px 0; height:180px; border-radius:6px; background:#F2F2F4; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:#8A8A92; font-family:-apple-system, sans-serif; font-size:12px">
+                            <span style="font-family:'Material Symbols Rounded'; font-size:26px; line-height:1">hide_image</span>Изображение скрыто</div>
+                        </sc-if>
+                        <sc-if value="{{ imgsShown }}" hint-placeholder-val="{{ false }}">
+                          <div style="margin:20px 32px 0; height:180px; border-radius:6px; background:repeating-linear-gradient(135deg, #EDE7DF 0 10px, #E6DED3 10px 20px); display:grid; place-items:center; font-family:'SF Mono', ui-monospace, Menlo, monospace; font-size:11px; color:#7A6F62">обложка выпуска · 1200×540</div>
+                        </sc-if>
+                        <div style="padding:20px 32px 26px">
+                          <div style="font-size:24px; line-height:1.2; font-weight:700; letter-spacing:-0.01em">Один файл вместо двенадцати: вариативные шрифты в интерфейсах</div>
+                          <p style="font-size:15px; line-height:1.6; color:#333; margin:12px 0 0">Как одна гарнитура заменяет целое семейство начертаний, почему это экономит трафик и что с этим делать дизайнерам интерфейсов. Разбираем на примерах почтовых клиентов и новостных приложений.</p>
+                          <div style="display:inline-block; margin-top:18px; padding:10px 18px; border-radius:6px; background:#1A1A1A; color:#fff; font-family:-apple-system, sans-serif; font-size:13px; font-weight:600">Читать выпуск</div>
+                          <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:24px; padding-top:18px; border-top:1px solid #EEE">
+                            <div><div style="font-family:-apple-system, sans-serif; font-size:10.5px; font-weight:700; letter-spacing:0.08em; color:#999">ТАКЖЕ В ВЫПУСКЕ</div><div style="font-size:15px; font-weight:700; margin-top:6px; line-height:1.3">Почему кириллица ломает вёрстку заголовков</div></div>
+                            <div><div style="font-family:-apple-system, sans-serif; font-size:10.5px; font-weight:700; letter-spacing:0.08em; color:#999">ИНСТРУМЕНТЫ</div><div style="font-size:15px; font-weight:700; margin-top:6px; line-height:1.3">Пять утилит для проверки контраста</div></div>
+                          </div>
+                          <div style="font-family:-apple-system, sans-serif; font-size:11px; color:#999; margin-top:24px; line-height:1.5">Вы получили это письмо, потому что подписались на «Полосу». <span style="text-decoration:underline">Отписаться</span></div>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ m.hasAtt }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; padding-left:48px">
+                        <sc-for list="{{ m.att }}" as="f" hint-placeholder-count="2">
+                          <div style="display:flex; align-items:center; gap:9px; padding:5px 12px 5px 5px; border-radius:10px; background:var(--inset); border:0.5px solid var(--cardBorder)" style-hover="background:var(--hover)">
+                            <div style="width:30px; height:30px; border-radius:7px; background:{{ f.bg }}; color:{{ f.fg }}; display:grid; place-items:center">
+                              <span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1; font-variation-settings:'FILL' 1">{{ f.icon }}</span></div>
+                            <div>
+                              <div style="font-size:12.5px; font-weight:550; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ f.name }}</div>
+                              <div style="font-size:11px; color:var(--fg3)">{{ f.size }}</div>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="flex:none; padding:10px 28px 16px">
+          <sc-if value="{{ replyClosed }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ doReply }}" style="max-width:680px; margin:0 auto; height:40px; border-radius:20px; background:var(--card); border:0.5px solid var(--cardBorder); box-shadow:var(--cardShadowSm); display:flex; align-items:center; gap:10px; padding:0 8px 0 16px; color:var(--fg3); font-size:13px" style-hover="border-color:var(--sepStrong)">
+              <span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1">reply</span>
+              <div style="flex:1">Быстрый ответ…</div>
+              <div style="font-size:11px; padding:2px 6px; border-radius:5px; background:var(--seg); color:var(--fg3)">R</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ replyOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="max-width:680px; margin:0 auto; border-radius:14px; background:var(--card); border:0.5px solid var(--cardBorder); box-shadow:var(--cardShadow); overflow:hidden">
+              <div style="display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:0.5px solid var(--sep); font-size:12px; color:var(--fg3)">
+                <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1">reply</span>
+                <div style="flex:1">Ответ: <span style="color:var(--fg); font-weight:550">{{ replyTo }}</span></div>
+                <span onClick="{{ closeReply }}" style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">close_fullscreen</span>
+              </div>
+              <textarea ref="{{ replyRef }}" placeholder="Напишите ответ…" style="display:block; width:100%; box-sizing:border-box; height:110px; resize:none; border:none; outline:none; background:transparent; padding:12px 16px; font:inherit; font-size:13.5px; line-height:1.55; color:var(--fg)"></textarea>
+              <div style="display:flex; align-items:center; gap:2px; padding:6px 8px 8px 10px">
+                <sc-for list="{{ fmtIcons }}" as="ic" hint-placeholder-count="4">
+                  <div style="width:28px; height:26px; border-radius:6px; display:grid; place-items:center; color:var(--fg3)" style-hover="background:var(--hover)"><span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">{{ ic }}</span></div>
+                </sc-for>
+                <div style="flex:1"></div>
+                <div style="font-size:11px; color:var(--fg3); margin-right:8px">⌘↩</div>
+                <div onClick="{{ sendReply }}" style="height:28px; padding:0 14px; border-radius:8px; background:var(--accent); color:#fff; display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:650" style-active="transform:scale(0.95)">Отправить
+                  <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1">send</span></div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ noThread }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:30px; padding-bottom:30px">
+          {{ floater }}
+          <div style="width:300px; border-radius:14px; background:var(--card); border:0.5px solid var(--cardBorder); box-shadow:var(--cardShadow); padding:14px 16px">
+            <div style="font-size:11px; font-weight:650; color:var(--fg3); margin-bottom:6px">Горячие клавиши</div>
+            <sc-for list="{{ shortcuts }}" as="k" hint-placeholder-count="6">
+              <div style="display:flex; align-items:center; height:30px; gap:10px">
+                <div style="flex:1; font-size:12.5px; color:var(--fg2)">{{ k.t }}</div>
+                <div style="display:flex; gap:3px">
+                  <sc-for list="{{ k.keys }}" as="kk" hint-placeholder-count="1">
+                    <div style="min-width:22px; height:22px; box-sizing:border-box; padding:0 6px; border-radius:6px; background:var(--inset); border:0.5px solid var(--cardBorder); box-shadow:0 1px 0 var(--sepStrong); display:grid; place-items:center; font-size:11.5px; font-weight:600; color:var(--fg)">{{ kk }}</div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ snoozeOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; left:{{ snoozeX }}px; top:46px; width:290px; padding:5px; border-radius:12px; background:var(--menu); backdrop-filter:blur(30px) saturate(1.8); box-shadow:var(--menuShadow); z-index:20; opacity:{{ snoozeOp }}; transform:translateY({{ snoozeY }}px) scale({{ snoozeS }}); transform-origin:40px 0; transition:{{ popT }}">
+          <div style="font-size:11px; font-weight:650; color:var(--fg3); padding:6px 10px 4px">Отложить до…</div>
+          <sc-for list="{{ snoozeItems }}" as="z" hint-placeholder-count="5">
+            <div onClick="{{ z.onClick }}" style="display:flex; align-items:center; gap:10px; height:30px; padding:0 10px; border-radius:7px; font-size:13px" style-hover="background:var(--accent); color:#fff">
+              <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1; width:18px">{{ z.icon }}</span>
+              <div style="flex:1">{{ z.t }}</div>
+              <div style="font-size:12px; opacity:0.6; font-variant-numeric:tabular-nums">{{ z.d }}</div>
+            </div>
+          </sc-for>
+          <div style="height:0.5px; background:var(--sepStrong); margin:5px 8px"></div>
+          <div style="display:flex; align-items:center; gap:10px; height:30px; padding:0 10px; border-radius:7px; font-size:13px" style-hover="background:var(--accent); color:#fff">
+            <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1; width:18px">calendar_month</span>Выбрать дату и время…</div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isSchedule }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; background:var(--win)">
+      <div style="height:52px; flex:none; display:flex; align-items:center; gap:10px; padding:0 14px; border-bottom:0.5px solid var(--tbSep)">
+        <div style="display:flex; padding:2px; border-radius:9px; background:var(--seg)">
+          <div onClick="{{ goMail }}" style="height:24px; display:flex; align-items:center; gap:5px; padding:0 10px; border-radius:7px; font-size:12px; color:var(--fg2)" style-hover="color:var(--fg)">
+            <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1">mail</span>Почта</div>
+          <div style="height:24px; display:flex; align-items:center; gap:5px; padding:0 10px; border-radius:7px; background:var(--segThumb); box-shadow:0 1px 2px rgba(0,0,0,0.1); font-size:12px; font-weight:600">
+            <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1">calendar_month</span>Расписание</div>
+        </div>
+        <div style="width:10px"></div>
+        <div style="font-size:15px; font-weight:650; letter-spacing:-0.01em">Вторник, 29 сентября</div>
+        <div style="flex:1"></div>
+        <div style="display:flex; align-items:center; gap:2px; color:var(--fg2)">
+          <div style="width:28px; height:26px; border-radius:7px; display:grid; place-items:center" style-hover="background:var(--hover)"><span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">chevron_left</span></div>
+          <div style="height:26px; padding:0 10px; border-radius:7px; background:var(--field); display:grid; place-items:center; font-size:12px; font-weight:600; color:var(--fg)">Сегодня</div>
+          <div style="width:28px; height:26px; border-radius:7px; display:grid; place-items:center" style-hover="background:var(--hover)"><span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">chevron_right</span></div>
+        </div>
+        <div style="width:190px; height:28px; border-radius:8px; background:var(--field); display:flex; align-items:center; gap:6px; padding:0 8px; box-sizing:border-box; color:var(--fg3); font-size:12.5px">
+          <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">search</span>Поиск</div>
+      </div>
+      <div style="flex:1; min-height:0; display:flex">
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column; padding:18px 24px 0 16px">
+          <div style="display:flex; align-items:baseline; gap:10px; padding-left:52px; margin-bottom:12px">
+            <div style="font-size:22px; font-weight:700; letter-spacing:-0.02em">Сегодня</div>
+            <div style="font-size:12.5px; color:var(--fg3)">4 встречи · 2 письма уйдут по расписанию</div>
+          </div>
+          <div style="position:relative; flex:1; min-height:0; overflow:hidden">
+            <sc-for list="{{ hours }}" as="h" hint-placeholder-count="11">
+              <div style="position:absolute; left:0; right:0; top:{{ h.top }}px; display:flex; align-items:flex-start; gap:10px">
+                <div style="width:42px; text-align:right; font-size:11px; color:var(--fg3); transform:translateY(-7px); font-variant-numeric:tabular-nums">{{ h.t }}</div>
+                <div style="flex:1; height:0.5px; background:var(--sep)"></div>
+              </div>
+            </sc-for>
+            <sc-for list="{{ events }}" as="ev" hint-placeholder-count="4">
+              <div style="position:absolute; left:62px; right:10px; top:{{ ev.top }}px; height:{{ ev.h }}px; box-sizing:border-box; border-radius:9px; background:{{ ev.bg }}; border:{{ ev.border }}; padding:7px 11px; display:flex; flex-direction:column; gap:2px; overflow:hidden">
+                <div style="display:flex; align-items:center; gap:7px">
+                  <div style="width:8px; height:8px; border-radius:3px; background:{{ ev.color }}; flex:none"></div>
+                  <div style="font-size:12.5px; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ ev.t }}</div>
+                  <div style="flex:1"></div>
+                  <sc-if value="{{ ev.fromMail }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex; align-items:center; gap:4px; font-size:11px; color:var(--fg2); white-space:nowrap"><span style="font-family:'Material Symbols Rounded'; font-size:13px; line-height:1">mail</span>из письма</div>
+                  </sc-if>
+                </div>
+                <div style="font-size:11.5px; color:var(--fg2); padding-left:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ ev.sub }}</div>
+              </div>
+            </sc-for>
+            <sc-for list="{{ sends }}" as="sd" hint-placeholder-count="2">
+              <div style="position:absolute; left:52px; right:10px; top:{{ sd.top }}px; display:flex; align-items:center; gap:8px; transform:translateY(-50%)">
+                <div style="width:9px; height:9px; border-radius:50%; background:var(--win); box-shadow:inset 0 0 0 2px {{ sd.color }}; flex:none"></div>
+                <div style="display:flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:12px; background:var(--card); border:0.5px solid var(--cardBorder); box-shadow:var(--cardShadowSm); font-size:11.5px; color:var(--fg2); white-space:nowrap; min-width:0; overflow:hidden">
+                  <span style="font-family:'Material Symbols Rounded'; font-size:14px; line-height:1; color:{{ sd.color }}">{{ sd.icon }}</span>
+                  <span style="font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums">{{ sd.time }}</span>{{ sd.t }}</div>
+              </div>
+            </sc-for>
+            <div style="position:absolute; left:46px; right:0; top:{{ nowTop }}px; display:flex; align-items:center; pointer-events:none">
+              <div style="width:8px; height:8px; border-radius:50%; background:#F04545; margin-left:-4px"></div>
+              <div style="flex:1; height:1.5px; background:#F04545"></div>
+            </div>
+          </div>
+        </div>
+        <div style="width:360px; flex:none; border-left:0.5px solid var(--sep); background:var(--list); overflow-y:auto; padding:18px 16px">
+          <div style="font-size:15px; font-weight:650; margin:0 4px 10px">Неделя</div>
+          <sc-for list="{{ week }}" as="wd" hint-placeholder-count="5">
+            <div style="margin-bottom:14px">
+              <div style="font-size:11px; font-weight:650; color:var(--fg3); padding:0 4px 6px">{{ wd.d }}</div>
+              <div style="display:flex; flex-direction:column; gap:4px">
+                <sc-for list="{{ wd.items }}" as="it" hint-placeholder-count="2">
+                  <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; background:var(--card); border:{{ it.border }}">
+                    <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1; color:{{ it.color }}; font-variation-settings:'FILL' 1">{{ it.icon }}</span>
+                    <div style="flex:1; min-width:0">
+                      <div style="font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ it.t }}</div>
+                      <div style="font-size:11.5px; color:var(--fg3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ it.sub }}</div>
+                    </div>
+                    <sc-if value="{{ it.tag }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-size:10.5px; font-weight:650; padding:2px 7px; border-radius:6px; background:var(--warnBg); color:var(--warnFg); white-space:nowrap">{{ it.tag }}</div>
+                    </sc-if>
+                    <div style="font-size:11.5px; color:var(--fg2); font-variant-numeric:tabular-nums">{{ it.time }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toastOn }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; left:{{ toastLeft }}px; bottom:22px; transform:translateX(-50%) translateY({{ toastY }}px) scale({{ toastS }}); opacity:{{ toastOp }}; transition:{{ popT }}; z-index:30; display:flex; align-items:center; gap:10px; height:44px; padding:0 6px 0 16px; border-radius:22px; background:var(--menu); backdrop-filter:blur(30px) saturate(1.8); box-shadow:var(--menuShadow); white-space:nowrap">
+      <span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1; color:var(--fg2)">{{ toastIcon }}</span>
+      <div style="font-size:13px; font-weight:550">{{ toastText }}</div>
+      <div onClick="{{ undo }}" style="height:30px; padding:0 12px; border-radius:15px; color:var(--accent); font-size:13px; font-weight:650; display:grid; place-items:center; margin-left:6px" style-hover="background:var(--accentSoft)">Отменить</div>
+      <div onClick="{{ closeToast }}" style="width:30px; height:30px; border-radius:15px; display:grid; place-items:center; color:var(--fg3)" style-hover="background:var(--hover)">
+        <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1">close</span></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ palOn }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePal }}" style="position:absolute; inset:0; background:var(--scrim); opacity:{{ palOp }}; transition:opacity .22s ease; z-index:40"></div>
+    <div style="position:absolute; left:50%; top:118px; width:600px; margin-left:-300px; z-index:41; border-radius:16px; background:var(--menu); backdrop-filter:blur(40px) saturate(1.8); box-shadow:var(--menuShadow); overflow:hidden; opacity:{{ palOp }}; transform:scale({{ palS }}); transition:{{ popT }}">
+      <div style="display:flex; align-items:center; gap:10px; height:54px; padding:0 18px; border-bottom:0.5px solid var(--sepStrong)">
+        <span style="font-family:'Material Symbols Rounded'; font-size:22px; line-height:1; color:var(--fg3)">search</span>
+        <input ref="{{ palRef }}" value="{{ palQ }}" onChange="{{ onPalQ }}" placeholder="Куда перейти или что сделать?" style="flex:1; border:none; outline:none; background:transparent; font:inherit; font-size:17px; color:var(--fg)">
+        <div style="font-size:11px; padding:2px 6px; border-radius:5px; background:var(--seg); color:var(--fg3)">esc</div>
+      </div>
+      <div style="padding:6px; max-height:420px; overflow-y:auto">
+        <sc-for list="{{ palItems }}" as="p" hint-placeholder-count="8">
+          <sc-if value="{{ p.showSec }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:11px; font-weight:650; color:var(--fg3); padding:8px 12px 4px">{{ p.sec }}</div>
+          </sc-if>
+          <div onClick="{{ p.onClick }}" onMouseEnter="{{ p.onHover }}" style="display:flex; align-items:center; gap:12px; height:44px; padding:0 12px; border-radius:10px; background:{{ p.bg }}; color:{{ p.fg }}">
+            <div style="width:28px; height:28px; border-radius:8px; background:{{ p.iconBg }}; color:{{ p.iconFg }}; display:grid; place-items:center; flex:none; font-size:12px; font-weight:700">
+              <sc-if value="{{ p.isAcc }}" hint-placeholder-val="{{ false }}">{{ p.ini }}</sc-if>
+              <sc-if value="{{ p.isIcon }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">{{ p.icon }}</span></sc-if>
+            </div>
+            <div style="flex:1; min-width:0">
+              <div style="font-size:13.5px; font-weight:550">{{ p.t }}</div>
+              <div style="font-size:11.5px; opacity:{{ p.subOp }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ p.sub }}</div>
+            </div>
+            <div style="font-size:11.5px; font-weight:600; padding:2px 7px; border-radius:6px; background:{{ p.keyBg }}; font-variant-numeric:tabular-nums">{{ p.key }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex; gap:16px; padding:9px 18px; border-top:0.5px solid var(--sepStrong); font-size:11px; color:var(--fg3)">
+        <div>↑↓ выбрать</div><div>↩ выполнить</div><div>⌘1…9 ящики</div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1320,&quot;height&quot;:820},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;scenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;all&quot;,&quot;newsletter&quot;,&quot;work&quot;,&quot;code&quot;,&quot;empty&quot;,&quot;zero&quot;,&quot;search&quot;,&quot;error&quot;,&quot;schedule&quot;],&quot;default&quot;:&quot;all&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;overlay&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;palette&quot;,&quot;undo&quot;,&quot;snooze&quot;,&quot;swipe&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;normal&quot;,&quot;roomy&quot;],&quot;default&quot;:&quot;normal&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;reduceMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;undoSeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:3,&quot;max&quot;:30,&quot;step&quot;:1,&quot;unit&quot;:&quot;с&quot;,&quot;default&quot;:5,&quot;tsType&quot;:&quot;number&quot;},&quot;width&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:1320,&quot;tsType&quot;:&quot;number&quot;},&quot;height&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:820,&quot;tsType&quot;:&quot;number&quot;}}">
+const LIGHT={'--win':'#FFFFFF','--list':'#F9F9FA','--side':'rgba(240,240,243,0.86)','--rail':'rgba(229,229,234,0.7)','--railSolid':'#E6E6EB','--frame':'rgba(0,0,0,0.22)','--fg':'#1C1C1F','--fg2':'#5C5C66','--fg3':'#8E8E98','--sep':'rgba(0,0,0,0.07)','--sepStrong':'rgba(0,0,0,0.11)','--tbSep':'rgba(0,0,0,0.05)','--hover':'rgba(0,0,0,0.045)','--press':'rgba(0,0,0,0.08)','--selSide':'rgba(0,0,0,0.07)','--accent':'#3D6AF2','--accentSoft':'rgba(61,106,242,0.12)','--selRow':'rgba(61,106,242,0.11)','--card':'#FFFFFF','--cardHover':'#FAFAFB','--inset':'#F6F6F8','--cardBorder':'rgba(0,0,0,0.08)','--cardShadow':'0 1px 2px rgba(0,0,0,0.04), 0 6px 20px rgba(20,20,40,0.05)','--cardShadowSm':'0 1px 2px rgba(0,0,0,0.04)','--field':'rgba(0,0,0,0.05)','--menu':'rgba(250,250,252,0.92)','--menuShadow':'0 0 0 0.5px rgba(0,0,0,0.14), 0 20px 50px rgba(0,0,0,0.18)','--scrim':'rgba(24,24,32,0.26)','--seg':'rgba(0,0,0,0.055)','--segThumb':'#FFFFFF','--privBg':'rgba(51,189,115,0.11)','--privFg':'#16714A','--privBtn':'rgba(51,189,115,0.16)','--warnBg':'rgba(250,140,51,0.12)','--warnFg':'#B35A12'};
+const DARK={'--win':'#1C1C1F','--list':'#202024','--side':'rgba(40,40,46,0.86)','--rail':'rgba(28,28,33,0.7)','--railSolid':'#26262B','--frame':'rgba(255,255,255,0.14)','--fg':'#F1F1F4','--fg2':'#ABABB5','--fg3':'#767680','--sep':'rgba(255,255,255,0.07)','--sepStrong':'rgba(255,255,255,0.11)','--tbSep':'rgba(255,255,255,0.05)','--hover':'rgba(255,255,255,0.055)','--press':'rgba(255,255,255,0.1)','--selSide':'rgba(255,255,255,0.09)','--accent':'#5B84FF','--accentSoft':'rgba(91,132,255,0.18)','--selRow':'rgba(91,132,255,0.18)','--card':'#27272C','--cardHover':'#2B2B31','--inset':'#212125','--cardBorder':'rgba(255,255,255,0.07)','--cardShadow':'0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.22)','--cardShadowSm':'0 1px 2px rgba(0,0,0,0.3)','--field':'rgba(255,255,255,0.065)','--menu':'rgba(46,46,52,0.92)','--menuShadow':'0 0 0 0.5px rgba(255,255,255,0.13), 0 24px 60px rgba(0,0,0,0.55)','--scrim':'rgba(0,0,0,0.45)','--seg':'rgba(255,255,255,0.07)','--segThumb':'rgba(255,255,255,0.15)','--privBg':'rgba(51,189,115,0.14)','--privFg':'#62D69D','--privBtn':'rgba(51,189,115,0.2)','--warnBg':'rgba(250,140,51,0.16)','--warnFg':'#FFB067'};
+const ACCS=[
+ {id:'work',name:'Работа',email:'a.volkova@severlab.ru',prov:'Google Workspace',color:'#3B82F6',ini:'Р'},
+ {id:'home',name:'Личное',email:'anna.volkova@icloud.com',prov:'iCloud',color:'#FA8C33',ini:'Л'},
+ {id:'studio',name:'Студия',email:'hello@volkova.studio',prov:'IMAP · Fastmail',color:'#8C5CF5',ini:'С'}];
+const AMAP={};ACCS.forEach(a=>AMAP[a.id]=a);
+const TH=[
+ {id:'t1',acc:'work',cat:'people',from:'Михаил Орлов',h:250,count:2,subject:'Правки по макету онбординга',preview:'Анна, посмотрел вторую итерацию. В целом очень хорошо, но на шаге выбора аккаунта я бы убрал лишний экран и сразу показывал провайдеров.',time:'12:24',unread:true,attach:true},
+ {id:'t2',acc:'work',cat:'people',from:'Ирина Ким',h:330,count:1,subject:'Приглашение: ревью дизайн-системы',preview:'Чт, 1 окт., 15:00–16:00 · Переговорная «Нева». Пройдёмся по токенам, типографике и новым строкам списка.',time:'11:02',unread:true},
+ {id:'t3',acc:'home',cat:'notif',from:'Облако Север',h:190,count:1,subject:'Код для входа: 482 913',preview:'Используйте этот код, чтобы подтвердить вход с нового устройства. Код действует 10 минут.',time:'10:47',unread:true},
+ {id:'t4',acc:'home',cat:'news',from:'Полоса',h:40,count:1,subject:'Выпуск №42: вариативные шрифты в интерфейсах',preview:'Как одна гарнитура заменяет целое семейство начертаний, почему это экономит трафик и что с этим делать дизайнерам.',time:'09:15',unread:true},
+ {id:'t5',acc:'studio',cat:'people',from:'Даниил Смирнов',h:150,count:3,subject:'Счёт за сентябрь и акт',preview:'Прикладываю счёт и акт выполненных работ за сентябрь. Оплатить нужно до 5 октября, реквизиты те же.',time:'09:03',attach:true,flag:true},
+ {id:'t6',acc:'work',cat:'notif',from:'Трекер задач',h:280,count:1,subject:'[DS-214] Вам назначена задача «Тёмная тема для списка»',preview:'Ольга Белова назначила вас исполнителем. Срок — 2 октября, приоритет высокий.',time:'Вчера'},
+ {id:'t7',acc:'home',cat:'people',from:'Мама',h:20,count:2,subject:'Фотографии с дачи',preview:'Анечка, отправляю фотографии, как обещала. Яблок в этом году столько, что не знаем, куда девать!',time:'Вчера',attach:true},
+ {id:'t8',acc:'work',cat:'people',from:'Ольга Белова',h:0,count:4,subject:'Re: Бюджет на Q4',preview:'Согласовала с финансами: на исследование закладываем чуть больше, на подрядчиков — как в прошлом квартале.',time:'Вчера',flag:true},
+ {id:'t9',acc:'studio',cat:'news',from:'Дизайн-дайджест',h:210,count:1,subject:'Десять лучших интерфейсов сентября',preview:'Разбираем почтовые клиенты, календари и одну очень смелую навигацию.',time:'Пн'},
+ {id:'t10',acc:'home',cat:'notif',from:'Ласточка · Билеты',h:100,count:1,subject:'Ваш маршрут Москва — Казань',preview:'Поезд №712, отправление 10 октября в 07:05. Электронная регистрация пройдена.',time:'Пн',attach:true},
+ {id:'t11',acc:'work',cat:'people',from:'Сергей Лебедев',h:170,count:1,subject:'Доступ к тестовому стенду',preview:'Выдал доступ к стенду, логин прежний. Если будут ошибки синхронизации — пиши сразу мне.',time:'Пн'}];
+const TMAP={};TH.forEach(t=>TMAP[t.id]=t);
+const ME={from:'Анна Волкова',me:true,email:'a.volkova@severlab.ru'};
+const MSGS={
+ t1:[{...ME,to:'Михаилу Орлову',time:'Вчера, 18:10',short:'Михаил, привет! Скидываю вторую итерацию онбординга, посмотри, пожалуйста, до завтра.',body:['Михаил, привет!','Скидываю вторую итерацию онбординга, посмотри, пожалуйста, до завтра.']},
+  {from:'Михаил Орлов',email:'m.orlov@severlab.ru',to:'мне',time:'Сегодня, 12:24',body:['Анна, привет!','Посмотрел вторую итерацию. В целом очень хорошо: стало заметно спокойнее, и переход между шагами наконец читается.','Два замечания. На шаге выбора аккаунта я бы убрал лишний экран и сразу показывал сетку провайдеров. И давай проверим ошибку входа в тёмной теме — сейчас оранжевый почти теряется.','Комментарии оставил прямо в файле, PDF — для тех, у кого нет доступа.','Спасибо! Миша'],att:[{name:'Комментарии_онбординг_v2.pdf',size:'2,4 МБ',kind:'pdf'},{name:'onboarding-flow.fig',size:'18,1 МБ',kind:'fig'}]}],
+ t2:[{from:'Ирина Ким',email:'i.kim@severlab.ru',to:'мне, Михаилу Орлову и ещё 3',time:'Сегодня, 11:02',invite:{mon:'ОКТ',day:'1',title:'Ревью дизайн-системы UniMail',when:'Четверг, 1 октября · 15:00–16:00',where:'Переговорная «Нева» · видеозвонок по ссылке в приглашении'},body:['Коллеги, привет!','Предлагаю в четверг пройтись по дизайн-системе UniMail: токены обеих тем, типографика, строки списка в трёх плотностях. Возьмите свои вопросы — соберём их в один документ.','Ирина']}],
+ t3:[{from:'Облако Север',email:'no-reply@oblako-sever.ru',to:'мне',time:'Сегодня, 10:47',code:'482 913',body:['Здравствуйте!','Кто-то входит в ваш аккаунт с нового устройства: MacBook Pro, Москва. Если это вы, введите код выше.','Если вы не запрашивали вход, проигнорируйте письмо и смените пароль.']}],
+ t4:[{from:'Полоса',email:'digest@polosa.media',to:'мне',time:'Сегодня, 09:15',html:true,priv:true}],
+ t5:[{...ME,email:'hello@volkova.studio',to:'Даниилу Смирнову',time:'25 сент., 14:02',short:'Даниил, пришлите, пожалуйста, счёт за сентябрь, когда будет готов.',body:['Даниил, пришлите, пожалуйста, счёт за сентябрь, когда будет готов.']},
+  {from:'Даниил Смирнов',email:'d.smirnov@bureau.ru',to:'мне',time:'26 сент., 10:15',short:'Да, конечно, пришлю в начале недели вместе с актом.',body:['Да, конечно, пришлю в начале недели вместе с актом.']},
+  {from:'Даниил Смирнов',email:'d.smirnov@bureau.ru',to:'мне',time:'Сегодня, 09:03',body:['Анна, добрый день!','Прикладываю счёт и акт выполненных работ за сентябрь. Оплатить нужно до 5 октября, реквизиты те же, что и в прошлый раз.','Даниил'],att:[{name:'Счёт_0927.pdf',size:'184 КБ',kind:'pdf'},{name:'Акт_сентябрь.pdf',size:'212 КБ',kind:'pdf'}]}],
+ t7:[{from:'Мама',email:'galina.v@mail.ru',to:'мне',time:'Вчера, 20:41',short:'Анечка, как ты там? Позвони, как будет минутка.',body:['Анечка, как ты там?']},{from:'Мама',email:'galina.v@mail.ru',to:'мне',time:'Вчера, 21:05',body:['Анечка, отправляю фотографии, как обещала. Яблок в этом году столько, что не знаем, куда девать!','Приезжайте в выходные, папа уже договорился насчёт бани.'],att:[{name:'IMG_2041.heic',size:'3,1 МБ',kind:'img'},{name:'IMG_2044.heic',size:'2,8 МБ',kind:'img'}]}]};
+const KIND={pdf:{icon:'picture_as_pdf',c:'#F04545'},fig:{icon:'design_services',c:'#8C5CF5'},img:{icon:'image',c:'#33BD73'},zip:{icon:'folder_zip',c:'#8E8E98'},doc:{icon:'description',c:'#3B82F6'}};
+const FOLD=[{id:'inbox',t:'Входящие',i:'inbox'},{id:'snoozed',t:'Отложенные',i:'schedule',c:3},{id:'flagged',t:'Отмеченные',i:'flag'},{id:'drafts',t:'Черновики',i:'draft',c:1},{id:'scheduled',t:'Запланированные',i:'schedule_send',c:2},{id:'sent',t:'Отправленные',i:'send'}];
+const MORE=[{id:'archive',t:'Архив',i:'archive'},{id:'spam',t:'Спам',i:'report',c:4},{id:'trash',t:'Корзина',i:'delete'}];
+const ALLF=[...FOLD,...MORE];
+const FSETS={snoozed:['t9','t10','t7'],drafts:['t8'],scheduled:['t8','t5'],sent:['t1','t8','t5'],spam:[],trash:[]};
+const SCEN={all:{acc:'all',sel:'t1'},newsletter:{acc:'all',sel:'t4'},work:{acc:'work',cat:'people',sel:'t2'},code:{acc:'all',sel:'t3'},empty:{acc:'all',sel:null},zero:{acc:'all',sel:null,zero:true},search:{acc:'all',sel:null,q:'договор аренды'},error:{acc:'studio',sel:null,error:true},schedule:{acc:'all',sel:'t1',mode:'schedule'}};
+const CATS=[{id:'all',t:'Все'},{id:'people',t:'Люди'},{id:'notif',t:'Уведомления'},{id:'news',t:'Рассылки'}];
+const plural=(n,a,b,c)=>{const m=n%10,h=n%100;return m===1&&h!==11?a:(m>=2&&m<=4&&(h<12||h>14)?b:c);};
+const inis=n=>n.split(/[\s·]+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+class Component extends DCLogic {
+  state = this.init(this.props);
+  palRef = React.createRef();
+  replyRef = React.createRef();
+  timers = [];
+  init(p){
+    const sc=SCEN[p.scenario||'all']||SCEN.all; const ov=p.overlay||'none';
+    const flags={};TH.forEach(t=>flags[t.id]=!!t.flag);
+    const read={};if(sc.sel)read[sc.sel]=true;
+    return {mode:sc.mode||'mail',acc:sc.acc,folder:'inbox',cat:sc.cat||'all',sel:sc.sel,q:sc.q||'',err:!!sc.error,
+      archived:sc.zero?TH.map(t=>t.id):[],removing:null,entering:null,hidden:{},flags,read,expanded:{},
+      overlay:ov==='palette'||ov==='snooze'?ov:'none',popIn:true,palQ:'',palIdx:0,
+      toast:ov==='undo',toastIn:true,toastText:'Перемещено в архив',toastIcon:'archive',
+      swipe:ov==='swipe',switching:false,showImages:false,rsvp:null,copied:false,replyOpen:false,flagPop:false,
+      layers:{mail:true,send:true,snooze:true}};
+  }
+  componentDidMount(){
+    this.onKey=e=>this.key(e);window.addEventListener('keydown',this.onKey);
+    if(!window.__umActive)window.__umActive=this;
+  }
+  componentWillUnmount(){window.removeEventListener('keydown',this.onKey);this.timers.forEach(clearTimeout);if(window.__umActive===this)window.__umActive=null;}
+  componentDidUpdate(pp){
+    const p=this.props;
+    if(pp.scenario!==p.scenario||pp.overlay!==p.overlay)this.setState(this.init(p));
+  }
+  later(fn,ms){this.timers.push(setTimeout(fn,ms));}
+  rm(){return !!this.props.reduceMotion;}
+  pool(st){
+    const s=st||this.state;let list;
+    if(s.folder==='inbox')list=TH.filter(t=>!s.archived.includes(t.id));
+    else if(s.folder==='flagged')list=TH.filter(t=>s.flags[t.id]&&!s.archived.includes(t.id));
+    else if(s.folder==='archive')list=s.archived.map(id=>TMAP[id]);
+    else list=(FSETS[s.folder]||[]).map(id=>TMAP[id]);
+    list=s.acc==='all'?list.filter(t=>!s.hidden[t.acc]):list.filter(t=>t.acc===s.acc);
+    if(s.folder==='inbox'&&s.cat!=='all')list=list.filter(t=>t.cat===s.cat);
+    if(s.q){const q=s.q.toLowerCase();list=list.filter(t=>(t.subject+' '+t.from+' '+t.preview).toLowerCase().includes(q));}
+    return list;
+  }
+  bump(patch){
+    // transition in: set start state, then release
+    this.setState({...patch,switching:true});
+    this.later(()=>this.setState({switching:false}),30);
+  }
+  switchAcc(id){
+    if(this.state.acc===id&&this.state.mode==='mail')return;
+    const next={...this.state,acc:id,cat:'all',folder:'inbox'};
+    const list=this.pool(next);const keep=list.find(t=>t.id===this.state.sel);
+    const sel=keep?keep.id:(list[0]?list[0].id:null);
+    this.bump({acc:id,cat:'all',folder:'inbox',sel,mode:'mail',overlay:'none',read:{...this.state.read,[sel]:true}});
+  }
+  select(id){this.setState(s=>({sel:id,read:{...s.read,[id]:true},replyOpen:false,showImages:false,copied:false,swipe:false}));}
+  move(dir){const l=this.pool();if(!l.length)return;let i=l.findIndex(t=>t.id===this.state.sel);i=Math.max(0,Math.min(l.length-1,i+dir));this.select(l[i].id);}
+  archive(text,icon){
+    const id=this.state.sel;if(!id)return;
+    const l=this.pool();const i=l.findIndex(t=>t.id===id);const nxt=l[i+1]||l[i-1];
+    this.setState({removing:id,overlay:'none'});
+    this.later(()=>{
+      this.setState(s=>({archived:[...s.archived,id],removing:null,sel:nxt?nxt.id:null,read:nxt?{...s.read,[nxt.id]:true}:s.read,toast:true,toastIn:false,toastText:text||'Перемещено в архив',toastIcon:icon||'archive'}));
+      this.later(()=>this.setState({toastIn:true}),30);
+      clearTimeout(this.toastT);this.toastT=setTimeout(()=>this.hideToast(),(this.props.undoSeconds||5)*1000);
+    },this.rm()?150:320);
+  }
+  hideToast(){this.setState({toastIn:false});this.later(()=>this.setState({toast:false}),260);}
+  undo(){
+    const a=[...this.state.archived];const id=a.pop();clearTimeout(this.toastT);this.hideToast();
+    if(!id||this.state.archived.length===TH.length&&SCEN[this.props.scenario]?.zero&&false)return;
+    this.setState({archived:a,entering:id,sel:id});
+    this.later(()=>this.setState({entering:null}),40);
+  }
+  openPal(){this.setState({overlay:'palette',popIn:false,palQ:'',palIdx:0});this.later(()=>{this.setState({popIn:true});this.palRef.current&&this.palRef.current.focus();},20);}
+  closePal(){this.setState({popIn:false});this.later(()=>this.setState({overlay:'none'}),this.rm()?100:180);}
+  openSnooze(){if(this.state.overlay==='snooze'){this.setState({overlay:'none'});return;}this.setState({overlay:'snooze',popIn:false});this.later(()=>this.setState({popIn:true}),20);}
+  palList(){
+    const s=this.state;const cur=s.sel&&TMAP[s.sel];
+    const items=[
+     {sec:'Перейти',icon:'all_inbox',t:'Все ящики',sub:'Входящие из 3 аккаунтов',key:'⌘1',grad:true,act:()=>this.switchAcc('all')},
+     ...ACCS.map((a,i)=>({sec:'Перейти',acc:a,t:a.name,sub:a.email+' · '+a.prov,key:'⌘'+(i+2),act:()=>this.switchAcc(a.id)})),
+     {sec:'Перейти',icon:'schedule',t:'Отложенные',sub:'3 письма вернутся до пятницы',key:'G S',act:()=>this.setState({folder:'snoozed',mode:'mail'})},
+     {sec:'Перейти',icon:'calendar_month',t:'Расписание',sub:'Повестка дня и недели',key:'⌘⇧2',act:()=>this.setState({mode:'schedule'})},
+     {sec:'Действия',icon:'edit_square',t:'Новое письмо',sub:'От: Работа · a.volkova@severlab.ru',key:'⌘N',act:()=>{}},
+     {sec:'Действия',icon:'archive',t:'Архивировать тред',sub:cur?'«'+cur.subject+'»':'Нет выбранного письма',key:'E',act:()=>this.archive()},
+     {sec:'Действия',icon:'snooze',t:'Отложить…',sub:'Завтра утром, 08:00',key:'H',act:()=>this.openSnooze()},
+     {sec:'Действия',icon:'reply',t:'Ответить',sub:cur?cur.from:'—',key:'R',act:()=>this.setState({replyOpen:true})},
+     {sec:'Действия',icon:'dark_mode',t:'Сменить тему',sub:'Светлая · Тёмная · Как в системе',key:'⌘⇧L',act:()=>{}}];
+    const q=s.palQ.trim().toLowerCase();
+    return q?items.filter(i=>(i.t+' '+i.sub).toLowerCase().includes(q)):items;
+  }
+  key(e){
+    if(window.__umActive!==this)return;
+    const s=this.state;const tag=(e.target&&e.target.tagName)||'';const typing=tag==='INPUT'||tag==='TEXTAREA';
+    if((e.metaKey||e.ctrlKey)&&e.code==='KeyK'){e.preventDefault();s.overlay==='palette'?this.closePal():this.openPal();return;}
+    if(e.key==='Escape'){if(s.overlay==='palette')this.closePal();else this.setState({overlay:'none',replyOpen:false});return;}
+    if(s.overlay==='palette'){
+      const l=this.palList();
+      if(e.key==='ArrowDown'){e.preventDefault();this.setState({palIdx:Math.min(l.length-1,s.palIdx+1)});}
+      if(e.key==='ArrowUp'){e.preventDefault();this.setState({palIdx:Math.max(0,s.palIdx-1)});}
+      if(e.key==='Enter'){e.preventDefault();const it=l[s.palIdx];this.closePal();it&&this.later(()=>it.act(),60);}
+      return;
+    }
+    if(typing)return;
+    if((e.metaKey||e.ctrlKey)&&/^Digit[1-4]$/.test(e.code)){e.preventDefault();this.switchAcc(['all','work','home','studio'][+e.code.slice(5)-1]);return;}
+    if(e.metaKey||e.ctrlKey||e.altKey)return;
+    if(e.code==='KeyJ')this.move(1);else if(e.code==='KeyK')this.move(-1);
+    else if(e.code==='KeyE')this.archive();else if(e.code==='KeyH')this.openSnooze();
+    else if(e.code==='KeyR'){e.preventDefault();this.setState({replyOpen:true});this.later(()=>this.replyRef.current&&this.replyRef.current.focus(),30);}
+  }
+  renderVals(){
+    const s=this.state,p=this.props;const dark=p.theme==='dark';const rm=this.rm();
+    const W=p.width||1320,H=p.height||820;const narrow=W<1150;
+    const foldW=narrow?196:210,listW=narrow?316:390;
+    const av=(h)=>dark?{bg:`oklch(0.36 0.07 ${h})`,fg:`oklch(0.9 0.07 ${h})`}:{bg:`oklch(0.91 0.05 ${h})`,fg:`oklch(0.42 0.11 ${h})`};
+    const springT=rm?'none':'transform .42s cubic-bezier(.34,1.36,.64,1)';
+    const fadeT=s.switching?'none':(rm?'opacity .15s ease':'opacity .3s ease, transform .38s cubic-bezier(.2,.8,.2,1)');
+    const popT=rm?'opacity .15s ease':'opacity .2s ease, transform .32s cubic-bezier(.3,1.3,.6,1)';
+    const isMail=s.mode==='mail';const acc=s.acc==='all'?null:AMAP[s.acc];
+    const unreadOf=id=>TH.filter(t=>t.acc===id&&t.unread&&!s.read[t.id]&&!s.archived.includes(t.id)).length;
+    const accIdx=s.acc==='all'?-1:ACCS.findIndex(a=>a.id===s.acc);
+    const railY=isMail||true?(accIdx<0?46:110+accIdx*52):46;
+    const railAccs=ACCS.map((a,i)=>{const n=unreadOf(a.id);const err=s.err&&a.id==='studio';const sync=!err&&a.id==='studio';
+      return {...a,top:116+i*52,badge:n,showBadge:n>0&&!err,err,onClick:()=>this.switchAcc(a.id),
+        ring:sync?React.createElement('div',{style:{position:'absolute',left:-5,top:-5,width:50,height:50,borderRadius:'50%',boxSizing:'border-box',border:'2px solid transparent',borderTopColor:a.color,borderRightColor:a.color,opacity:.8,animation:rm?'none':'um-spin 1.1s linear infinite'}}):null};});
+    const list=this.pool();
+    const totalUnread=TH.filter(t=>t.unread&&!s.read[t.id]&&!s.archived.includes(t.id)&&(s.acc==='all'?!s.hidden[t.acc]:t.acc===s.acc)).length;
+    const fIdx=ALLF.findIndex(f=>f.id===s.folder);const folderY=fIdx<6?fIdx*32:224+(fIdx-6)*32;
+    const mkF=f=>{const on=f.id===s.folder;let c=f.c;if(f.id==='inbox')c=totalUnread;if(f.id==='flagged')c=TH.filter(t=>s.flags[t.id]&&(s.acc==='all'||t.acc===s.acc)).length;
+      return {...f,c,hasCount:!!c,weight:on?600:450,iconColor:on?'var(--accent)':'var(--fg2)',fill:on?1:0,
+        pillBg:f.id==='inbox'&&c?'var(--accent)':'var(--seg)',pillFg:f.id==='inbox'&&c?'#fff':'var(--fg2)',
+        onClick:()=>this.setState({folder:f.id,swipe:false})};};
+    const DZ={compact:{pad:'7px 12px 7px 6px',av:24,avFs:10,dotH:18,showPreview:false,inline:true,subjFs:12.5,subjTop:1},
+      normal:{pad:'10px 12px 11px 6px',av:32,avFs:12,dotH:32,showPreview:true,inline:false,subjFs:13,subjTop:2},
+      roomy:{pad:'14px 14px 15px 6px',av:38,avFs:13.5,dotH:38,showPreview:true,inline:false,subjFs:13.5,subjTop:4}};
+    const dz=DZ[p.density||'normal']||DZ.normal;
+    const rows=list.map((t,i)=>{const on=t.id===s.sel;const unread=t.unread&&!s.read[t.id];const a=av(t.h);
+      const swipeR=s.swipe&&i===1,swipeL=s.swipe&&i===3;const gone=s.removing===t.id;const ent=s.entering===t.id;
+      return {id:t.id,name:t.from,ini:inis(t.from),avBg:a.bg,avFg:a.fg,accColor:AMAP[t.acc].color,showAccDot:s.acc==='all',
+        ringBg:on?'var(--list)':'var(--list)',count:t.count,showCount:t.count>1,subject:t.subject,preview:t.preview,time:t.time,
+        attach:!!t.attach,flag:!!s.flags[t.id],dotOp:unread?1:0,dotScale:unread?1:0.3,nameW:unread?700:500,subjW:unread?600:450,
+        timeFg:unread?'var(--accent)':'var(--fg3)',bg:on?'var(--selRow)':(swipeR||swipeL?'var(--list)':'transparent'),
+        shadow:swipeR||swipeL?'0 2px 10px rgba(0,0,0,0.12)':'none',tx:swipeR?118:swipeL?-124:gone&&!rm?-60:0,swipeR,swipeL,
+        maxH:gone||ent?0:220,op:gone||ent?0:1,onClick:()=>this.select(t.id)};});
+    const rowT=rm?'opacity .15s ease':'max-height .32s cubic-bezier(.2,.8,.2,1) .1s, opacity .24s ease';
+    const catI=CATS.findIndex(c=>c.id===s.cat);
+    const cats=CATS.map(c=>({t:narrow&&c.id==='notif'?'Уведомл.':c.t,w:c.id===s.cat?600:450,fg:c.id===s.cat?'var(--fg)':'var(--fg2)',onClick:()=>this.setState({cat:c.id})}));
+    const fTitle=(ALLF.find(f=>f.id===s.folder)||FOLD[0]).t;
+    // reader
+    const t=s.sel&&TMAP[s.sel];const hasThread=!!t&&isMail&&!s.archived.includes(t.id);
+    let msgs=[],th={};
+    if(t){const raw=MSGS[t.id]||[{from:t.from,email:t.from.toLowerCase().replace(/[^a-zа-я]/g,'').slice(0,8)+'@mail.ru',to:'мне',time:t.time,body:[t.preview,'Хорошего дня!']}];
+      const A=AMAP[t.acc];
+      th={subject:t.subject,accName:A.name,accColor:A.color,accTint:`color-mix(in oklch, ${A.color} ${dark?22:13}%, transparent)`,countLabel:raw.length+' '+plural(raw.length,'письмо','письма','писем')+' в треде',isNews:t.cat==='news'};
+      msgs=raw.map((m,i)=>{const key=t.id+i;const last=i===raw.length-1;const open=s.expanded[key]!==undefined?s.expanded[key]:last;
+        const a=m.me?{bg:dark?'#3A3A42':'#E6E6EC',fg:dark?'#DDD':'#555'}:av(t.h);
+        return {...m,ini:inis(m.from),avBg:a.bg,avFg:a.fg,open,collapsed:!open,short:m.short||(m.body||[''])[0],
+          toggle:()=>{if(raw.length<2)return;this.setState(st=>({expanded:{...st.expanded,[key]:!open}}));},
+          priv:!!m.priv,hasInvite:!!m.invite,inv:m.invite||{},hasCode:!!m.code,isText:!m.html&&!!m.body,paras:m.body||[],
+          hasAtt:!!(m.att&&m.att.length),att:(m.att||[]).map(f=>{const k=KIND[f.kind]||KIND.doc;return {...f,icon:k.icon,fg:k.c,bg:`color-mix(in oklch, ${k.c} ${dark?24:14}%, transparent)`};})};});}
+    const RS=[{id:'yes',t:'Принять',icon:'check',c:'#33BD73'},{id:'maybe',t:'Возможно',icon:'help',c:'#FA8C33'},{id:'no',t:'Отклонить',icon:'close',c:'#F04545'}];
+    const rsvp=RS.map(b=>{const on=s.rsvp===b.id;return {t:b.t,icon:b.icon,bg:on?b.c:'var(--field)',fg:on?'#fff':'var(--fg)',onClick:()=>this.setState({rsvp:on?null:b.id})};});
+    const shortcuts=[{t:'Командная палитра',keys:['⌘','K']},{t:'Переключить ящик',keys:['⌘','1…9']},{t:'Следующее / предыдущее',keys:['J','K']},{t:'Архивировать',keys:['E']},{t:'Отложить',keys:['H']},{t:'Ответить',keys:['R']}];
+    const floater=React.createElement('div',{style:{position:'relative',width:96,height:116,display:'flex',flexDirection:'column',alignItems:'center'}},
+      React.createElement('div',{style:{width:88,height:88,borderRadius:24,background:'var(--card)',boxShadow:'var(--cardShadow), 0 0 0 0.5px var(--cardBorder)',display:'grid',placeItems:'center',color:'var(--accent)',animation:rm?'none':'um-float 4.5s ease-in-out infinite'}},
+        React.createElement('span',{style:{fontFamily:"'Material Symbols Rounded'",fontSize:46,lineHeight:1,fontVariationSettings:"'FILL' 1, 'wght' 400"}},'mail')),
+      React.createElement('div',{style:{position:'absolute',bottom:0,width:64,height:10,borderRadius:'50%',background:'rgba(0,0,0,0.18)',filter:'blur(6px)',animation:rm?'none':'um-shadow 4.5s ease-in-out infinite'}}));
+    // palette
+    const pl=this.palList();let prevSec=null;
+    const palItems=pl.map((it,i)=>{const on=i===s.palIdx;const showSec=it.sec!==prevSec;prevSec=it.sec;
+      return {sec:it.sec,showSec,t:it.t,sub:it.sub,key:it.key,isAcc:!!it.acc,isIcon:!it.acc,ini:it.acc?it.acc.ini:'',icon:it.icon,
+        bg:on?'var(--accent)':'transparent',fg:on?'#fff':'var(--fg)',subOp:on?0.85:0.55,keyBg:on?'rgba(255,255,255,0.2)':'var(--seg)',
+        iconBg:it.acc?it.acc.color:it.grad?'linear-gradient(145deg,#5C59E6,#3B82F6 45%,#14B8BF)':(on?'rgba(255,255,255,0.2)':'var(--seg)'),
+        iconFg:it.acc||it.grad||on?'#fff':'var(--fg2)',
+        onHover:()=>this.setState({palIdx:i}),onClick:()=>{this.closePal();this.later(()=>it.act(),60);}};});
+    const snoozeItems=[{icon:'hourglass_top',t:'Через 3 часа',d:'15:40'},{icon:'wb_twilight',t:'Сегодня вечером',d:'19:00'},{icon:'wb_sunny',t:'Завтра утром',d:'Ср, 08:00'},{icon:'weekend',t:'В выходные',d:'Сб, 3 окт., 09:00'},{icon:'date_range',t:'На следующей неделе',d:'Пн, 5 окт., 08:00'}]
+      .map(z=>({...z,onClick:()=>this.archive('Отложено: '+z.t.toLowerCase()+' · '+z.d,'schedule')}));
+    // schedule
+    const HP=54,H0=9;
+    const colOf=id=>AMAP[id].color;
+    const evs=[{t:'Стендап дизайна',sub:'10:00–10:30 · Работа',s:10,e:10.5,acc:'work'},{t:'Обед с Катей',sub:'12:30–13:30 · «Пекарня на Литейном»',s:12.5,e:13.5,acc:'home'},
+      {t:'Созвон с клиентом «Север»',sub:'16:00–17:00 · Студия · видеозвонок',s:16,e:17,acc:'studio'},{t:'Разбор правок онбординга',sub:'17:30–18:15 · договорились в письме Михаила Орлова',s:17.5,e:18.25,acc:'work',mail:true}]
+      .filter(e=>!e.mail||s.layers.mail);
+    const events=evs.map(e=>{const c=colOf(e.acc);return {t:e.t,sub:e.sub,color:c,fromMail:!!e.mail,top:(e.s-H0)*HP+1,h:(e.e-e.s)*HP-3,
+      bg:e.mail?'transparent':`color-mix(in oklch, ${c} ${dark?24:14}%, var(--win))`,border:e.mail?`1.5px dashed ${c}`:'none'};});
+    const sends=[{time:'15:00',t:'Отправится «Re: Бюджет на Q4» → Ольга Белова',v:15,acc:'work',icon:'schedule_send',k:'send'},{time:'19:00',t:'Вернётся «Десять лучших интерфейсов сентября»',v:19,acc:'studio',icon:'snooze',k:'snooze'},{time:'18:40',t:'Отправится «Счёт оплачен» → Даниил Смирнов',v:18.67,acc:'studio',icon:'schedule_send',k:'send'}]
+      .filter(x=>s.layers[x.k]).map(x=>({...x,color:colOf(x.acc),top:(x.v-H0)*HP}));
+    const hours=[];for(let h=9;h<=19;h++)hours.push({t:(h<10?'0':'')+h+':00',top:(h-H0)*HP});
+    const mkW=(icon,t,sub,time,acc,o={})=>({icon,t,sub,time,color:colOf(acc),tag:o.tag||'',border:o.dash?`1px dashed ${colOf(acc)}`:'0.5px solid var(--cardBorder)'});
+    const week=[{d:'СРЕДА, 30 СЕНТЯБРЯ',items:[mkW('event','Планирование спринта','Работа · 1 ч','11:00','work'),mkW('schedule_send','Отправится «Отчёт за сентябрь»','→ Ольга Белова','08:00','work')]},
+      {d:'ЧЕТВЕРГ, 1 ОКТЯБРЯ',items:[mkW('mail','Ревью дизайн-системы UniMail','Из письма Ирины Ким · Переговорная «Нева»','15:00','work',{dash:true,tag:'Ждёт ответа'})]},
+      {d:'ПЯТНИЦА, 2 ОКТЯБРЯ',items:[mkW('task_alt','Срок: DS-214 «Тёмная тема для списка»','Из письма Трекера задач','весь день','work',{dash:true}),mkW('event','Йога','Личное','19:30','home')]},
+      {d:'СУББОТА, 3 ОКТЯБРЯ',items:[mkW('snooze','Вернётся «Фотографии с дачи»','Отложено · Личное','09:00','home')]},
+      {d:'ПОНЕДЕЛЬНИК, 5 ОКТЯБРЯ',items:[mkW('mail','Оплатить счёт Даниилу Смирнову','Из письма «Счёт за сентябрь и акт»','до 18:00','studio',{dash:true})]}];
+    const calDays=[];const evDays=[30,1,2,3,5,7,10,15,22,24];
+    calDays.push({n:31,fg:'var(--fg3)',bg:'transparent',w:400,dot:false});
+    for(let d=1;d<=30;d++){const today=d===29;calDays.push({n:d,fg:today?'#fff':'var(--fg)',bg:today?'var(--accent)':'transparent',w:today?700:450,dot:!today&&evDays.includes(d)});}
+    for(let d=1;d<=4;d++)calDays.push({n:d,fg:'var(--fg3)',bg:'transparent',w:400,dot:false});
+    const LY=[{k:'mail',t:'Встречи из писем',icon:'mail'},{k:'send',t:'Отправка писем',icon:'schedule_send'},{k:'snooze',t:'Возврат отложенных',icon:'snooze'}];
+    const layers=LY.map(l=>{const on=s.layers[l.k];return {...l,trackBg:on?'var(--accent)':'var(--sepStrong)',knobX:on?10:0,onClick:()=>this.setState(st=>({layers:{...st.layers,[l.k]:!on}}))};});
+    const errAcc=s.err&&s.acc==='studio';
+    const pop=s.popIn&&true;
+    const cur=t;
+    return {
+      vars:dark?DARK:LIGHT,W,H,foldW,listW,springT,fadeT,popT,rowT,railY,railAccs,
+      activate:()=>{window.__umActive=this;},
+      goAll:()=>this.switchAcc('all'),openAdd:()=>{},openCompose:()=>{},
+      isMail,isSchedule:!isMail,isAll:s.acc==='all',
+      boxTitle:isMail?(acc?acc.name:'Все ящики'):'Расписание',boxSub:isMail?(acc?acc.email:'3 аккаунта в одном списке'):'3 календаря · 2 письма в очереди',
+      hdrOp:s.switching?0:1,hdrY:s.switching&&!rm?14:0,listOp:s.switching?0:1,listY:s.switching&&!rm?10:0,
+      folders:FOLD.map(mkF),more:MORE.map(mkF),folderY,
+      eyes:ACCS.map(a=>{const h=!!s.hidden[a.id];return {name:a.name,color:a.color,op:h?0.45:1,icon:h?'visibility_off':'visibility',onClick:()=>this.setState(st=>({hidden:{...st.hidden,[a.id]:!h}}))};}),
+      syncIcon:errAcc||s.err?'sync_problem':'cloud_done',syncColor:s.err?'var(--warnFg)':'var(--fg3)',
+      syncText:s.err?'Студия: нужен пароль':'Синхронизировано · 12:40',
+      weekdays:['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],calDays,calAccs:ACCS,layers,
+      goSchedule:()=>this.setState({mode:'schedule',overlay:'none'}),goMail:()=>this.bump({mode:'mail'}),
+      listTitle:s.q?'Поиск':fTitle,listSub:s.q?(list.length+' '+plural(list.length,'результат','результата','результатов')):(s.folder==='inbox'&&totalUnread?totalUnread+' '+plural(totalUnread,'непрочитанное','непрочитанных','непрочитанных'):''),
+      showCats:s.folder==='inbox'&&!s.q,catX:catI*100,cats,catFs:narrow?11:12,dz,rows,
+      errBanner:errAcc,zeroState:!s.q&&s.folder==='inbox'&&list.length===0&&s.cat==='all',searchEmpty:!!s.q&&list.length===0,
+      folderEmpty:!s.q&&list.length===0&&!(s.folder==='inbox'&&s.cat==='all'),
+      q:s.q,hasQ:!!s.q,onQ:e=>this.setState({q:e.target.value}),clearQ:()=>this.setState({q:''}),searchW:narrow?150:200,
+      hasThread,noThread:isMail&&!hasThread,th,msgs,rsvp,
+      privText:s.showImages?'Изображения показаны · Трекинг-пиксели вырезаны: 1':'Удалённые изображения скрыты: 2 · Трекинг-пиксели вырезаны: 1',
+      privBtn:s.showImages?'Скрыть':'Показать изображения',toggleImages:()=>this.setState({showImages:!s.showImages}),
+      imgsHidden:!s.showImages,imgsShown:s.showImages,
+      copyCode:()=>{try{navigator.clipboard.writeText('482913');}catch(e){}this.setState({copied:true});this.later(()=>this.setState({copied:false}),1800);},
+      copyIcon:s.copied?'check':'content_copy',copyLabel:s.copied?'Скопировано':'Скопировать',
+      replyOpen:s.replyOpen,replyClosed:!s.replyOpen,replyTo:cur?cur.from:'',replyRef:this.replyRef,
+      doReply:()=>{this.setState({replyOpen:true});this.later(()=>this.replyRef.current&&this.replyRef.current.focus(),30);},
+      closeReply:()=>this.setState({replyOpen:false}),sendReply:()=>{this.setState({replyOpen:false,toast:true,toastIn:false,toastText:'Ответ отправлен',toastIcon:'send'});this.later(()=>this.setState({toastIn:true}),30);clearTimeout(this.toastT);this.toastT=setTimeout(()=>this.hideToast(),(p.undoSeconds||5)*1000);},
+      fmtIcons:['format_bold','format_italic','format_list_bulleted','link','attach_file','mood'],
+      doArchive:()=>this.archive(),doDelete:()=>this.archive('Перемещено в корзину','delete'),
+      doFlag:()=>{if(!s.sel)return;this.setState(st=>({flags:{...st.flags,[st.sel]:!st.flags[st.sel]},flagPop:true}));this.later(()=>this.setState({flagPop:false}),160);},
+      flagFill:s.sel&&s.flags[s.sel]?1:0,flagBtnFg:s.sel&&s.flags[s.sel]?'#FA8C33':'var(--fg2)',flagScale:s.flagPop&&!rm?1.35:1,
+      toggleSnooze:()=>this.openSnooze(),snoozeOpen:s.overlay==='snooze'&&isMail,snoozeItems,snoozeX:narrow?150:196,
+      snoozeBtnBg:s.overlay==='snooze'?'var(--press)':'transparent',snoozeBtnFg:s.overlay==='snooze'?'var(--fg)':'var(--fg2)',
+      snoozeOp:pop?1:0,snoozeY:pop||rm?0:-6,snoozeS:pop||rm?1:0.96,
+      shortcuts,floater,
+      toastOn:s.toast,toastText:s.toastText,toastIcon:s.toastIcon,toastLeft:isMail?66+foldW+listW+(W-66-foldW-listW)/2:W/2,
+      toastY:s.toastIn||rm?0:24,toastS:s.toastIn||rm?1:0.94,toastOp:s.toastIn?1:0,
+      undo:()=>this.undo(),closeToast:()=>{clearTimeout(this.toastT);this.hideToast();},
+      palOn:s.overlay==='palette',palOp:pop?1:0,palS:pop||rm?1:0.94,palItems,palQ:s.palQ,palRef:this.palRef,
+      onPalQ:e=>this.setState({palQ:e.target.value,palIdx:0}),closePal:()=>this.closePal(),
+      hours,events,sends,nowTop:(12+40/60-H0)*HP,week
+    };
+  }
+}
+</script>
+</body>
+</html>

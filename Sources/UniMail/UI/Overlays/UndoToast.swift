@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Плашка «Отменить» после архивации, удаления, отправки.
+/// Капсула «Отменить»: выезжает снизу с лёгким масштабом (раскадровка 07).
 @MainActor
 struct UndoToast: View {
     @Environment(MailStore.self) private var store
@@ -8,36 +8,57 @@ struct UndoToast: View {
     var body: some View {
         ZStack {
             if let undo = store.undo {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Image(systemName: undo.symbol)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .font(.system(size: 15))
+                        .foregroundStyle(UM.fg2)
                         .symbolEffect(.bounce, value: undo.id)
                     Text(undo.title)
-                        .font(.callout.weight(.medium))
-                    Divider().frame(height: 16)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
                     Button("Отменить") { store.undoLast() }
-                        .buttonStyle(.plain)
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .buttonStyle(ToastButtonStyle())
                         .keyboardShortcut("z", modifiers: .command)
-                    Button {
-                        store.dismissUndo()
-                    } label: {
-                        Image(systemName: "xmark").font(.caption.weight(.bold))
+                        .padding(.leading, 6)
+                    Button { store.dismissUndo() } label: {
+                        Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
+                    .buttonStyle(ToolbarIconStyle(width: 30, height: 30, radius: 15, tint: UM.fg3))
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
-                .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+                .padding(.leading, 16)
+                .padding(.trailing, 6)
+                .frame(height: 44)
+                .umMenuSurface(radius: 22)
+                .fixedSize()
                 .id(undo.id)
-                .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
+                .transition(Motion.reduce ? AnyTransition.opacity : .asymmetric(
+                    insertion: .opacity.combined(with: .offset(y: 24)).combined(with: .scale(scale: 0.94)),
+                    removal: .opacity.combined(with: .offset(y: 8))
+                ))
             }
         }
-        .animation(Motion.bouncy, value: store.undo)
+        .animation(store.undo == nil ? Motion.toastOut : Motion.toastIn, value: store.undo)
+    }
+}
+
+private struct ToastButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        StyledBody(configuration: configuration)
+    }
+
+    private struct StyledBody: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(UM.accent)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Capsule().fill(hovering ? UM.accentSoft : .clear))
+                .scaleEffect(configuration.isPressed ? 0.95 : 1)
+                .onHover { hovering = $0 }
+        }
     }
 }

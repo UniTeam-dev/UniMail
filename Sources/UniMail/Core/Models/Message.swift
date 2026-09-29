@@ -26,20 +26,29 @@ enum MailboxRole: String, Codable, CaseIterable, Identifiable, Sendable {
         case .snoozed: "clock"
         case .flagged: "flag"
         case .drafts: "doc"
-        case .scheduled: "calendar.badge.clock"
+        case .scheduled: "paperplane.circle"
         case .sent: "paperplane"
         case .archive: "archivebox"
-        case .spam: "xmark.bin"
+        case .spam: "exclamationmark.octagon"
         case .trash: "trash"
         }
     }
 
-    var selectedSymbol: String {
-        self == .scheduled ? symbol : "\(symbol).fill"
-    }
+    var selectedSymbol: String { "\(symbol).fill" }
 
-    /// Показывать ли счётчик непрочитанных (у «Отправленных» он бессмысленен).
-    var countsUnread: Bool { [.inbox, .snoozed, .flagged, .spam].contains(self) }
+    /// Основные папки и «Ещё» — как в макете.
+    static let primary: [MailboxRole] = [.inbox, .snoozed, .flagged, .drafts, .scheduled, .sent]
+    static let secondary: [MailboxRole] = [.archive, .spam, .trash]
+
+    /// Какой счётчик показывать у папки: непрочитанные, всего или ничего.
+    enum Counter { case unread, total, none }
+    var counter: Counter {
+        switch self {
+        case .inbox: .unread
+        case .snoozed, .flagged, .drafts, .scheduled, .spam: .total
+        case .sent, .archive, .trash: .none
+        }
+    }
 }
 
 struct Address: Codable, Hashable, Sendable {
@@ -50,9 +59,13 @@ struct Address: Codable, Hashable, Sendable {
     var full: String { name.map { "\($0) <\(email)>" } ?? email }
 
     var initials: String {
-        let base = display
-        let parts = base.split(separator: " ").prefix(2)
-        return parts.compactMap(\.first).map(String.init).joined().uppercased()
+        let parts = display.split(whereSeparator: { $0 == " " || $0 == "·" }).prefix(2)
+        let value = parts.compactMap(\.first).map(String.init).joined().uppercased()
+        return value.isEmpty ? "?" : value
+    }
+
+    var isValid: Bool {
+        email.range(of: #"^[^@\s]+@[^@\s]+\.[A-Za-zА-Яа-я]{2,}$"#, options: .regularExpression) != nil
     }
 }
 
@@ -62,15 +75,26 @@ struct Attachment: Identifiable, Codable, Hashable, Sendable {
     var size: Int
     var mimeType: String
 
-    var symbol: String {
-        if mimeType.hasPrefix("image/") { return "photo" }
-        if mimeType == "application/pdf" { return "doc.richtext" }
-        if mimeType.contains("spreadsheet") || filename.hasSuffix(".xlsx") { return "tablecells" }
-        if mimeType.contains("zip") { return "doc.zipper" }
-        return "doc"
+    enum Kind { case pdf, design, image, table, slides, archive, document }
+
+    var kind: Kind {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "pdf": return .pdf
+        case "fig", "sketch", "psd": return .design
+        case "jpg", "jpeg", "png", "heic", "gif", "webp": return .image
+        case "xlsx", "xls", "csv", "numbers": return .table
+        case "key", "pptx", "ppt": return .slides
+        case "zip", "rar", "7z": return .archive
+        default: return mimeType.hasPrefix("image/") ? .image : .document
+        }
     }
 
-    var sizeText: String { ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file) }
+    var sizeText: String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(size))
+    }
 }
 
 /// Автоматическая категория входящих.
@@ -84,6 +108,16 @@ enum InboxCategory: String, Codable, CaseIterable, Sendable {
         case .newsletters: "Рассылки"
         }
     }
+
+    var shortTitle: String { self == .notifications ? "Уведомл." : title }
+}
+
+/// Приглашение в календарь из письма (.ics).
+struct Invite: Codable, Hashable, Sendable {
+    var title: String
+    var start: Date
+    var end: Date
+    var location: String
 }
 
 struct Message: Identifiable, Codable, Hashable, Sendable {
@@ -104,14 +138,35 @@ struct Message: Identifiable, Codable, Hashable, Sendable {
     var category: InboxCategory = .people
     var snoozedUntil: Date?
     var scheduledAt: Date?
-    /// Есть ли в письме приглашение в календарь (.ics).
-    var hasInvite: Bool = false
+    var invite: Invite?
+    /// Одноразовый код, если провайдер или разбор письма его нашёл.
+    var oneTimeCode: String?
+
+    var hasInvite: Bool { invite != nil }
 
     var snippet: String {
         body.replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespaces)
-            .prefix(160)
+            .prefix(180)
             .description
+    }
+
+    /// Абзацы тела для экрана чтения.
+    var paragraphs: [String] {
+        body.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    /// Код подтверждения: из поля или найденный в теме и тексте.
+    var detectedCode: String? {
+        if let oneTimeCode { return oneTimeCode }
+        let text = subject + " " + body
+        let lower = text.lowercased()
+        guard lower.contains("код") || lower.contains("code") else { return nil }
+        guard let regex = try? NSRegularExpression(pattern: #"\b(\d{3})[ -]?(\d{3})\b"#),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let a = Range(match.range(at: 1), in: text),
+              let b = Range(match.range(at: 2), in: text) else { return nil }
+        return "\(text[a]) \(text[b])"
     }
 }
 
@@ -129,4 +184,14 @@ struct OutgoingMessage: Codable, Hashable, Sendable {
     var sendAt: Date?
     /// Отправить каждому получателю отдельное письмо.
     var sendSeparately: Bool = false
+    /// Напомнить, если на письмо не ответят (этап 7).
+    var remindIfNoReply: Bool = false
+}
+
+/// Склонение: 1 письмо, 2 письма, 5 писем.
+func plural(_ n: Int, _ one: String, _ few: String, _ many: String) -> String {
+    let m10 = n % 10, m100 = n % 100
+    if m10 == 1 && m100 != 11 { return one }
+    if (2...4).contains(m10) && !(12...14).contains(m100) { return few }
+    return many
 }

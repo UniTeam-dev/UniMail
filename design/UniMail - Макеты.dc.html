@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>body{margin:0;background:#DCDDE3;-webkit-font-smoothing:antialiased}a{color:#3D6AF2;text-decoration:none}a:hover{text-decoration:underline}</style>
+</helmet>
+<div style="padding:80px; font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, sans-serif; color:#1C1C1F; display:flex; flex-direction:column; gap:110px; width:max-content">
+
+  <section data-screen-label="Обложка" style="display:flex; align-items:center; gap:48px">
+    <dc-import name="App Icon" size="180" hint-size="180px,180px"></dc-import>
+    <div>
+      <div style="font-size:64px; font-weight:750; letter-spacing:-0.035em">UniMail</div>
+      <div style="font-size:20px; color:#5C5C66; margin-top:6px; max-width:760px; line-height:1.45">Нативный почтовый клиент для macOS: Gmail, Outlook / Exchange, iCloud и любой IMAP в одном окне. Ниже — все экраны в светлой и тёмной темах, мини-дизайн-система, иконка и раскадровка анимаций.</div>
+      <div style="display:flex; gap:10px; margin-top:18px; font-size:13px; color:#5C5C66">
+        <div style="padding:6px 12px; border-radius:8px; background:rgba(255,255,255,0.7)">Окна интерактивны: клик по аккаунтам, папкам, письмам</div>
+        <div style="padding:6px 12px; border-radius:8px; background:rgba(255,255,255,0.7)">⌘K · J/K · E · H · R · ⌘1…4</div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="01 Главное окно" style="display:flex; flex-direction:column; gap:24px">
+    <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em">1–4 · Главное окно</div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">1 · Все ящики → Входящие, тред из 2 писем · светлая</div><dc-import name="UniMail App" theme="light" scenario="all" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">1 · То же · тёмная</div><dc-import name="UniMail App" theme="dark" scenario="all" hint-size="1320px,820px"></dc-import></div>
+    </div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">2 · HTML-рассылка с плашкой приватности · тёмная</div><dc-import name="UniMail App" theme="dark" scenario="newsletter" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">2 · То же · светлая</div><dc-import name="UniMail App" theme="light" scenario="newsletter" hint-size="1320px,820px"></dc-import></div>
+    </div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">3 · Аккаунт «Работа» · Люди · приглашение на встречу</div><dc-import name="UniMail App" theme="light" scenario="work" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">4 · Письмо с кодом подтверждения · тёмная</div><dc-import name="UniMail App" theme="dark" scenario="code" hint-size="1320px,820px"></dc-import></div>
+    </div>
+  </section>
+
+  <section data-screen-label="05 Оверлеи" style="display:flex; flex-direction:column; gap:24px">
+    <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em">5–8 · Палитра, «Отменить», свайпы, «Отложить»</div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">5 · Командная палитра ⌘K · светлая</div><dc-import name="UniMail App" theme="light" scenario="all" overlay="palette" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">5 · Командная палитра ⌘K · тёмная</div><dc-import name="UniMail App" theme="dark" scenario="all" overlay="palette" hint-size="1320px,820px"></dc-import></div>
+    </div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">6 · Плашка «Отменить» после архивации · пустое окно чтения</div><dc-import name="UniMail App" theme="light" scenario="empty" overlay="undo" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">7 · Свайп: вправо — Архив, влево — Отложить · тёмная</div><dc-import name="UniMail App" theme="dark" scenario="all" overlay="swipe" hint-size="1320px,820px"></dc-import></div>
+    </div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">8 · Меню «Отложить»</div><dc-import name="UniMail App" theme="light" scenario="all" overlay="snooze" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">7 · Свайпы · светлая</div><dc-import name="UniMail App" theme="light" scenario="all" overlay="swipe" hint-size="1320px,820px"></dc-import></div>
+    </div>
+  </section>
+
+  <section data-screen-label="Плотность" style="display:flex; flex-direction:column; gap:24px">
+    <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em">Плотность списка · компактная / обычная / просторная</div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">Компактная</div><dc-import name="UniMail App" theme="light" scenario="all" density="compact" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">Просторная · тёмная</div><dc-import name="UniMail App" theme="dark" scenario="all" density="roomy" hint-size="1320px,820px"></dc-import></div>
+    </div>
+  </section>
+
+  <section data-screen-label="09 Новое письмо" style="display:flex; flex-direction:column; gap:24px">
+    <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em">9–10 · Новое письмо и мастер «Добавить почтовый ящик»</div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap; align-items:flex-start">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">9 · Новое письмо · светлая</div><dc-import name="Compose" theme="light" hint-size="720px,640px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">9 · «Отправить позже» · тёмная</div><dc-import name="Compose" theme="dark" send-menu="{{ true }}" hint-size="720px,640px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">10 · Шаг 1 — провайдер</div><dc-import name="Add Account" theme="light" step="{{ 1 }}" hint-size="560px,520px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">10 · Шаг 2 — форма и серверы · тёмная</div><dc-import name="Add Account" theme="dark" step="{{ 2 }}" hint-size="560px,520px"></dc-import></div>
+    </div>
+  </section>
+
+  <section data-screen-label="11 Расписание" style="display:flex; flex-direction:column; gap:24px">
+    <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em">11 · Расписание</div>
+    <div style="font-size:15px; color:#5C5C66; max-width:900px; line-height:1.5">Вход — переключатель «Почта / Расписание» в тулбаре над списком (и ⌘⇧2 из палитры). Панель аккаунтов остаётся: выбор аккаунта фильтрует календари. Встречи из писем — пунктирные, запланированные и возвращающиеся письма — метки на той же ленте.</div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <dc-import name="UniMail App" theme="light" scenario="schedule" hint-size="1320px,820px"></dc-import>
+      <dc-import name="UniMail App" theme="dark" scenario="schedule" hint-size="1320px,820px"></dc-import>
+    </div>
+  </section>
+
+  <section data-screen-label="12 Настройки" style="display:flex; flex-direction:column; gap:24px">
+    <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em">12 · Настройки</div>
+    <div style="display:flex; gap:48px; flex-wrap:wrap">
+      <dc-import name="Settings" theme="light" tab="accounts" hint-size="620px,460px"></dc-import>
+      <dc-import name="Settings" theme="light" tab="look" hint-size="620px,460px"></dc-import>
+      <dc-import name="Settings" theme="dark" tab="behavior" hint-size="620px,460px"></dc-import>
+    </div>
+  </section>
+
+  <section data-screen-label="13 Пустые состояния" style="display:flex; flex-direction:column; gap:24px">
+    <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em">13 · Пустые состояния и ошибки</div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">Входящие разобраны · горячие клавиши</div><dc-import name="UniMail App" theme="light" scenario="zero" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">Пустой поиск · тёмная</div><dc-import name="UniMail App" theme="dark" scenario="search" hint-size="1320px,820px"></dc-import></div>
+    </div>
+    <div style="display:flex; gap:60px; flex-wrap:wrap; align-items:flex-start">
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">Ошибка синхронизации аккаунта «Студия»</div><dc-import name="UniMail App" theme="light" scenario="error" hint-size="1320px,820px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:12px"><div style="font-size:15px; font-weight:650">Минимальный размер 1000×620</div><dc-import name="UniMail App" theme="dark" scenario="all" width="{{ 1000 }}" height="{{ 620 }}" hint-size="1000px,620px"></dc-import></div>
+    </div>
+  </section>
+
+  <section data-screen-label="Иконка" style="display:flex; flex-direction:column; gap:24px">
+    <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em">Иконка приложения · 1024×1024</div>
+    <div style="display:flex; gap:40px; align-items:flex-end">
+      <div style="border-radius:40px; background:#F4F4F7; padding:20px"><dc-import name="App Icon" variant="light" size="{{ 512 }}" hint-size="512px,512px"></dc-import></div>
+      <div style="border-radius:40px; background:#141417; padding:20px"><dc-import name="App Icon" variant="dark" size="{{ 512 }}" hint-size="512px,512px"></dc-import></div>
+      <div style="display:flex; flex-direction:column; gap:20px">
+        <div style="display:flex; gap:18px; align-items:flex-end">
+          <dc-import name="App Icon" variant="light" size="{{ 128 }}" hint-size="128px,128px"></dc-import>
+          <dc-import name="App Icon" variant="light" size="{{ 64 }}" hint-size="64px,64px"></dc-import>
+          <dc-import name="App Icon" variant="light" size="{{ 32 }}" hint-size="32px,32px"></dc-import>
+        </div>
+        <div style="font-size:14px; color:#5C5C66; max-width:300px; line-height:1.5">Три цветных слоя-письма за синим конвертом — «много ящиков в одном». Сетка macOS: тело 824 px в холсте 1024, радиус 185.</div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Дизайн-система" style="display:flex; flex-direction:column; gap:24px">
+    <dc-import name="Design System" hint-size="1480px,2400px"></dc-import>
+  </section>
+
+  <section data-screen-label="Анимации" style="display:flex; flex-direction:column; gap:24px">
+    <dc-import name="Motion" hint-size="1480px,1800px"></dc-import>
+  </section>
+</div>
+</x-dc>
+</body>
+</html>

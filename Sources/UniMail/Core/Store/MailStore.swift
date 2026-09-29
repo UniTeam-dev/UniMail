@@ -30,7 +30,27 @@ final class MailStore {
     var selectedThreadID: String?
     var searchText = ""
     var categoryFilter: InboxCategory?
-    var hiddenAccountIDs: Set<UUID> = []
+    /// Почта или Расписание (переключатель в заголовке списка).
+    var mode: AppMode = .mail
+    /// Слои на ленте расписания.
+    var scheduleLayers: Set<ScheduleLayer> = Set(ScheduleLayer.allCases)
+    /// Запрос открыть быстрый ответ (клавиша R): счётчик, чтобы срабатывало повторно.
+    var quickReplyRequest = 0
+    /// Запрос открыть меню «Отложить» (клавиша H).
+    var snoozeMenuRequest = 0
+    /// Быстрый фильтр списка (кнопка-воронка в шапке списка).
+    var quickFilter: QuickFilter = .all
+    /// Искать также в спаме и корзине.
+    var searchEverywhere = false
+    /// Календари, скрытые на вкладке «Расписание».
+    var scheduleHidden: Set<UUID> = []
+    /// Время последней успешной синхронизации.
+    private(set) var lastSync: Date?
+
+    /// Ящики, скрытые из «Все ящики» (хранится в самих аккаунтах).
+    var hiddenAccountIDs: Set<UUID> {
+        Set(accounts.filter { $0.hiddenFromUnified == true }.map(\.id))
+    }
 
     private(set) var syncingAccountIDs: Set<UUID> = []
     private(set) var accountErrors: [UUID: String] = [:]
@@ -96,6 +116,7 @@ final class MailStore {
             let result = try await provider.sync(cursor: cursors[accountID])
             cursors[accountID] = result.cursor
             accountErrors[accountID] = nil
+            lastSync = .now
             withAnimation(Motion.list) {
                 for message in result.upserted { messages[message.id] = message }
                 for id in result.deletedIDs { messages[id] = nil }
@@ -134,17 +155,24 @@ final class MailStore {
         accounts.move(fromOffsets: source, toOffset: destination)
     }
 
-    /// ⌘0 — единый ящик, ⌘1…⌘9 — аккаунт по порядку.
+    /// ⌘1 — «Все ящики», ⌘2…⌘9 — аккаунты по порядку (как в макете).
     func switchTo(index: Int) {
         let target: MailScope
-        if index == 0 {
-            target = .unified(scope.role)
-        } else if accounts.indices.contains(index - 1) {
-            target = .account(accounts[index - 1].id, scope.role)
+        if index <= 1 {
+            target = .unified(.inbox)
+        } else if accounts.indices.contains(index - 2) {
+            target = .account(accounts[index - 2].id, .inbox)
         } else {
             return
         }
+        if mode != .mail { withAnimation(Motion.smooth) { mode = .mail } }
         select(scope: target)
+    }
+
+    /// Переключение аккаунта из панели: всегда во «Входящие», категория сбрасывается.
+    func switchToAccount(_ id: UUID?) {
+        if mode != .mail { withAnimation(Motion.smooth) { mode = .mail } }
+        select(scope: id.map { .account($0, .inbox) } ?? .unified(.inbox))
     }
 
     func switchToNextAccount() {
@@ -155,16 +183,22 @@ final class MailStore {
 
     func select(scope newScope: MailScope) {
         guard newScope != scope else { return }
+        let accountChanged = newScope.accountID != scope.accountID
         withAnimation(Motion.snappy) {
             scope = newScope
-            selectedThreadID = nil
-            if newScope.role != .inbox { categoryFilter = nil }
+            if accountChanged || newScope.role != .inbox { categoryFilter = nil }
+            // Открытый тред остаётся, если он есть в новом списке, иначе — первый.
+            let ids = threads(in: newScope).map(\.id)
+            if let current = selectedThreadID, ids.contains(current) { return }
+            selectedThreadID = accountChanged ? ids.first : nil
         }
+        if accountChanged, let first = selectedThreadID { openThread(first) }
     }
 
     func toggleHidden(_ id: UUID) {
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
         withAnimation(Motion.list) {
-            if hiddenAccountIDs.contains(id) { hiddenAccountIDs.remove(id) } else { hiddenAccountIDs.insert(id) }
+            accounts[index].hiddenFromUnified = !(accounts[index].hiddenFromUnified ?? false)
         }
     }
 
@@ -185,15 +219,16 @@ final class MailStore {
     /// Письма, видимые в текущем списке.
     func visibleMessages(in scope: MailScope) -> [Message] {
         let query = SearchQuery(searchText)
+        let filter = quickFilter
         return messages.values.filter { m in
             guard inScopeAccounts(m, scope) else { return false }
             if !query.isEmpty {
-                // Поиск идёт по всем папкам, кроме спама и корзины.
-                return m.role != .trash && m.role != .spam && query.matches(m)
+                // Поиск идёт по всем папкам, кроме спама и корзины (если не попросили искать везде).
+                return (searchEverywhere || (m.role != .trash && m.role != .spam)) && query.matches(m)
             }
             guard matchesRole(m, scope.role) else { return false }
             if scope.role == .inbox, let categoryFilter, m.category != categoryFilter { return false }
-            return true
+            return filter.matches(m)
         }
     }
 
@@ -233,7 +268,6 @@ final class MailStore {
     }
 
     func unreadCount(_ scope: MailScope) -> Int {
-        guard scope.role.countsUnread else { return 0 }
         return messages.values.reduce(0) { count, m in
             count + ((!m.isRead && inScopeAccounts(m, scope) && matchesRole(m, scope.role)) ? 1 : 0)
         }
@@ -310,10 +344,11 @@ final class MailStore {
         }
     }
 
-    func snooze(threadIDs: [String], until date: Date) {
+    func snooze(threadIDs: [String], until date: Date, label: String? = nil) {
         let ids = messageIDs(ofThreads: threadIDs)
         let formatted = date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
-        perform(title: "Отложено до \(formatted)", symbol: "clock", ids: ids,
+        let title = label.map { "Отложено: \($0.lowercased()) · \(formatted)" } ?? "Отложено до \(formatted)"
+        perform(title: title, symbol: "clock", ids: ids,
                 action: { .snooze(ids: $0, until: date) }) { message in
             message.role = .snoozed
             message.snoozedUntil = date
@@ -511,7 +546,7 @@ final class MailStore {
     }
 
     /// Отправка с окном «Отменить». Если задано время — письмо уходит в «Запланированные».
-    func send(_ draft: OutgoingMessage, requestID: UUID) {
+    func send(_ draft: OutgoingMessage, requestID: UUID, undoTitle: String = "Письмо отправляется…") {
         discardDraft(requestID: requestID)
         flushPending()
 
@@ -542,7 +577,7 @@ final class MailStore {
         pendingCommit = { [weak self] in
             await self?.deliver(draft)
         }
-        showUndo(PendingUndo(title: "Письмо отправляется…", symbol: "paperplane"))
+        showUndo(PendingUndo(title: undoTitle, symbol: "paperplane"))
     }
 
     private var scheduledDrafts: [String: OutgoingMessage] = [:]
@@ -565,6 +600,31 @@ final class MailStore {
         } catch {
             accountErrors[draft.accountID] = "Не отправлено: \(error.localizedDescription)"
             composeQueue.append(ComposeRequest(mode: .draft, draft: draft))
+        }
+    }
+}
+
+/// Быстрый фильтр списка.
+enum QuickFilter: String, CaseIterable, Identifiable {
+    case all, unread, flagged, attachments
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "Все письма"
+        case .unread: "Непрочитанные"
+        case .flagged: "С флажком"
+        case .attachments: "С вложениями"
+        }
+    }
+
+    func matches(_ m: Message) -> Bool {
+        switch self {
+        case .all: true
+        case .unread: !m.isRead
+        case .flagged: m.isFlagged
+        case .attachments: !m.attachments.isEmpty
         }
     }
 }

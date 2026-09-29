@@ -10,9 +10,12 @@ struct UniMailApp: App {
         WindowGroup("UniMail", id: "main") {
             RootView()
                 .environment(store)
+                .tint(UM.accent)
                 .frame(minWidth: 1000, minHeight: 620)
+                .background(WindowChrome(leading: 20, headerHeight: 52))
         }
-        .windowToolbarStyle(.unified(showsTitle: false))
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
         .defaultSize(width: 1320, height: 820)
         .commands { MailCommands(store: store) }
 
@@ -20,14 +23,18 @@ struct UniMailApp: App {
             if let request = request {
                 ComposeView(request: request)
                     .environment(store)
+                    .tint(UM.accent)
+                    .frame(minWidth: 600, minHeight: 480)
+                    .background(WindowChrome(leading: 16, headerHeight: 44))
             }
         }
-        .windowToolbarStyle(.unified(showsTitle: true))
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 720, height: 640)
 
         Settings {
             SettingsView()
                 .environment(store)
+                .tint(UM.accent)
         }
     }
 }
@@ -35,6 +42,8 @@ struct UniMailApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        let mode = AppearanceMode(rawValue: UserDefaults.standard.string(forKey: "appearance") ?? "") ?? .auto
+        mode.apply()
         NSApp.activate(ignoringOtherApps: true)
     }
 

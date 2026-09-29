@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="width:1480px; box-sizing:border-box; padding:64px; background:#F4F4F7; color:#1C1C1F; font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, sans-serif; font-size:13px">
+  <div style="font-size:12px; font-weight:650; color:#8E8E98; letter-spacing:0.04em">UNIMAIL · ДВИЖЕНИЕ</div>
+  <div style="display:flex; align-items:flex-end; gap:24px; margin:6px 0 40px">
+    <div style="font-size:40px; font-weight:750; letter-spacing:-0.03em">Раскадровка анимаций</div>
+    <div style="flex:1"></div>
+    <div style="font-size:13px; color:#5C5C66; max-width:460px; line-height:1.5">Пружины — для перемещения выделения и появления поверхностей, затухания — для смены содержимого. Все анимации прерываемы: новое действие подхватывает текущую скорость. Живой прототип — в «UniMail App».</div>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <sc-for list="{{ anims }}" as="a" hint-placeholder-count="8">
+      <div style="display:grid; grid-template-columns:300px 1fr; gap:28px; background:#fff; border-radius:16px; padding:22px 24px; box-shadow:0 0 0 0.5px rgba(0,0,0,0.08)">
+        <div>
+          <div style="font-size:11px; font-weight:650; color:#8E8E98">{{ a.n }}</div>
+          <div style="font-size:17px; font-weight:700; letter-spacing:-0.01em; margin-top:4px">{{ a.t }}</div>
+          <div style="font-size:12.5px; color:#5C5C66; line-height:1.5; margin-top:8px; text-wrap:pretty">{{ a.d }}</div>
+          <div style="font-family:'SF Mono', ui-monospace, Menlo, monospace; font-size:11px; color:#3D6AF2; background:rgba(61,106,242,0.08); border-radius:8px; padding:8px 10px; margin-top:12px; line-height:1.5; white-space:pre-line">{{ a.spec }}</div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px">
+          <sc-for list="{{ a.frames }}" as="f" hint-placeholder-count="4">
+            <div>
+              <div style="position:relative; height:150px; border-radius:12px; background:#FAFAFB; box-shadow:inset 0 0 0 0.5px rgba(0,0,0,0.08); overflow:hidden">
+                <sc-for list="{{ f.boxes }}" as="b" hint-placeholder-count="6">
+                  <div style="position:absolute; left:{{ b.x }}px; top:{{ b.y }}px; width:{{ b.w }}px; height:{{ b.h }}px; border-radius:{{ b.r }}px; background:{{ b.bg }}; opacity:{{ b.op }}; transform:{{ b.tf }}; box-shadow:{{ b.sh }}; color:{{ b.fg }}; font-size:{{ b.fs }}px; font-weight:700; display:grid; place-items:center; overflow:hidden">{{ b.t }}</div>
+                </sc-for>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:11.5px">
+                <div style="font-weight:650">{{ f.c }}</div>
+                <div style="font-family:'SF Mono', ui-monospace, Menlo, monospace; color:#8E8E98">{{ f.t }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1480,&quot;height&quot;:1800}}">
+const G='#E4E4EA',G2='#EDEDF1',A='#3D6AF2',AS='rgba(61,106,242,0.14)';
+const B=(x,y,w,h,o={})=>({x,y,w,h,r:o.r??4,bg:o.bg||G,op:o.op??1,tf:o.tf||'none',sh:o.sh||'none',fg:o.fg||'#fff',fs:o.fs||11,t:o.t||''});
+const rail=(hy,title,list)=>[B(0,0,44,150,{r:0,bg:'#ECECF0'}),B(6,hy-4,32,32,{r:9,bg:'rgba(0,0,0,0.08)'}),B(0,hy+5,3,14,{r:2,bg:'#1C1C1F'}),
+  ...['#3B82F6','#FA8C33','#8C5CF5'].map((c,i)=>B(10,16+i*34,24,24,{r:7,bg:c})),
+  B(54,title.y,70,8,{op:title.op,bg:'#C9C9D1'}),B(54,title.y+12,50,5,{op:title.op}),
+  ...(title.b?[B(54,title.b.y,60,8,{op:title.b.op,bg:'#C9C9D1'}),B(54,title.b.y+12,44,5,{op:title.b.op})]:[]),
+  ...[0,1,2,3].map(i=>B(134,48+i*24+list.y,76,16,{r:5,op:list.op,bg:G2}))];
+const rows=(fn)=>[0,1,2,3,4].map(i=>fn(i)).flat();
+const ANIMS=[
+ {n:'01',t:'Переключение аккаунта',d:'Подложка и «таблетка» переезжают к новому аватару пружиной с лёгким перелётом. Заголовок папок уходит вверх, новый приходит снизу (push). Список проявляется со сдвигом 10 px.',spec:'подложка: spring(response .30, damping .72)\n≈ cubic-bezier(.34,1.36,.64,1) 420 мс\nзаголовок: push ↑ 14 px, 280 мс\nсписок: opacity 0→1, y +10→0, 300 мс, delay 60',
+  frames:[{c:'Нажатие',t:'0 мс',boxes:rail(12,{y:18,op:1},{y:0,op:1})},{c:'Перелёт',t:'140 мс',boxes:rail(52,{y:8,op:0.3,b:{y:34,op:0.4}},{y:10,op:0})},{c:'Отскок',t:'260 мс',boxes:rail(84,{y:-10,op:0,b:{y:22,op:0.85}},{y:5,op:0.6})},{c:'Покой',t:'420 мс',boxes:rail(80,{y:-20,op:0,b:{y:18,op:1}},{y:0,op:1})}]},
+ {n:'02',t:'Выбор папки и категории',d:'Одна подложка на весь список: при выборе она скользит к новому пункту (matched geometry), а не гаснет и появляется заново. То же в сегментах «Все · Люди · Уведомления · Рассылки».',spec:'matchedGeometryEffect\nspring(response .32, damping .78)\nцвет текста: 200 мс ease',
+  frames:[0,0.55,1.08,1].map((p,i)=>({c:['Выбрано «Все»','В пути','Перелёт 8%','«Уведомления»'][i],t:['0','120','220','360'][i]+' мс',boxes:[B(16,24,188,26,{r:8,bg:'#EBEBEF'}),B(18+p*94,26,45,22,{r:6,bg:'#fff',sh:'0 1px 2px rgba(0,0,0,0.12)'}),...[0,1,2,3].map(k=>B(26+k*47,34,30,6,{bg:'#BDBDC6'})),
+    B(16,68,188,20,{r:6,bg:'rgba(0,0,0,0.07)',tf:`translateY(${p*48}px)`}),...[0,1,2].map(k=>B(24,74+k*24,90,8,{bg:'#CFCFD6'}))]}))},
+ {n:'03',t:'Архив и удаление',d:'Строка уезжает влево с затуханием, после этого соседние строки мягко смыкаются. Новое письмо въезжает сверху, раздвигая список.',spec:'уход: x 0→−60, opacity →0, 200 мс ease-in\nсмыкание: height →0, 320 мс (.2,.8,.2,1), delay 100\nвход: height 0→auto + y −8→0, spring .35',
+  frames:[0,1,2,3].map(s=>({c:['Нажата E','Строка уходит','Смыкание','Новое сверху'][s],t:['0','160','380','520'][s]+' мс',boxes:[
+    ...(s===3?[B(12,-2+14,196,20,{r:6,bg:AS,op:0.9})]:[]),
+    ...rows(i=>{if(i===1){if(s===0)return [B(12,14+i*26,196,20,{r:6,bg:AS})];if(s===1)return [B(12,14+i*26,196,20,{r:6,bg:AS,op:0.35,tf:'translateX(-50px)'})];return [];}
+      const up=i>1&&s>=2?-26:0;const dn=s===3?26:0;return [B(12,14+i*26+up+dn,196,20,{r:6,bg:G2}),B(20,20+i*26+up+dn,70,7,{bg:'#CFCFD6'})];})]}))},
+ {n:'04',t:'Флажок и счётчики',d:'Флажок «пружинит» при установке. Цифры в бейджах и пилюлях меняются как numeric text: старая уходит вверх, новая приходит снизу, ширина пилюли подстраивается.',spec:'флажок: scale 1→1.35→.92→1, spring(response .25, damping .5)\nцифры: contentTransition(.numericText)\nширина пилюли: spring .3',
+  frames:[[1,'3',0],[1.35,'3',-10],[0.92,'4',6],[1,'4',0]].map(([sc,n,dy],i)=>({c:['До','Пик','Отдача','После'][i],t:['0','90','180','300'][i]+' мс',boxes:[
+    B(40,50,50,50,{r:14,bg:i?'#FA8C33':'#E4E4EA',tf:`scale(${sc})`,t:'⚑',fs:24,fg:i?'#fff':'#8E8E98'}),
+    B(130,62,46,26,{r:13,bg:A,t:'',op:1}),B(130,62+dy,46,26,{r:13,bg:'transparent',t:n+(i>=2?'':''),fs:14,op:dy?0.6:1}),
+    B(148,34,10,10,{r:5,bg:'#F04545',op:0})]}))},
+ {n:'05',t:'Кнопки тулбара',d:'При нажатии иконка сжимается, при отпускании «подпрыгивает» с перелётом. Подсветка hover — мгновенно, без анимации.',spec:'press: scale .84, 80 мс\nrelease: spring(response .28, damping .55) → 1.08 → 1',
+  frames:[1,0.84,1.08,1].map((sc,i)=>({c:['Покой','Нажатие','Отпускание','Покой'][i],t:['0','80','170','320'][i]+' мс',boxes:[B(80,45,60,54,{r:12,bg:i===1?'rgba(0,0,0,0.1)':'rgba(0,0,0,0.05)',tf:`scale(${sc})`,t:'▣',fs:24,fg:'#5C5C66'})]}))},
+ {n:'06',t:'Командная палитра ⌘K',d:'Фон затемняется, панель появляется из масштаба 0.94 с проявлением. Закрытие — обратное движение, в полтора раза быстрее.',spec:'scrim: opacity 0→1, 220 мс ease\nпанель: scale .94→1, opacity 0→1\nspring(response .32, damping .82)\nзакрытие: 150 мс ease-in',
+  frames:[[0,0.94,0],[0.5,0.97,0.6],[0.9,1.005,0.95],[1,1,1]].map(([sc,s,o],i)=>({c:['⌘K','Проявление','Почти','Готово'][i],t:['0','90','200','320'][i]+' мс',boxes:[
+    ...[0,1,2,3].map(k=>B(12,14+k*30,196,22,{r:6,bg:G2})),B(0,0,220,150,{r:0,bg:'rgba(20,20,30,0.28)',op:sc}),
+    B(30,24,160,96,{r:12,bg:'#fff',op:o,tf:`scale(${s})`,sh:'0 10px 30px rgba(0,0,0,0.2)'}),B(40,36,100,8,{op:o,bg:'#CFCFD6',tf:`scale(${s})`}),B(38,58,144,18,{r:5,bg:A,op:o,tf:`scale(${s})`}),B(38,82,144,14,{r:5,bg:G2,op:o})]}))},
+ {n:'07',t:'Плашка «Отменить»',d:'Капсула из материала выезжает снизу с лёгким масштабом. Висит заданное в настройках время (3–30 с), при наведении таймер ставится на паузу.',spec:'вход: y +24→0, scale .94→1, opacity 0→1\nspring(response .35, damping .8)\nуход: opacity →0, y +8, 200 мс',
+  frames:[[24,0.94,0],[10,0.98,0.7],[-2,1.01,1],[0,1,1]].map(([y,s,o],i)=>({c:['Действие','Выезд','Перелёт','Покой'][i],t:['0','120','230','350'][i]+' мс',boxes:[
+    ...[0,1,2].map(k=>B(12,14+k*28,196,22,{r:6,bg:G2})),B(40,108+y,140,28,{r:14,bg:'rgba(250,250,252,0.96)',op:o,tf:`scale(${s})`,sh:'0 0 0 0.5px rgba(0,0,0,0.14), 0 8px 20px rgba(0,0,0,0.16)'}),B(118,117+y,40,10,{r:3,bg:A,op:o})]}))},
+ {n:'08',t:'«Уменьшить движение»',d:'Если в системе включено «Уменьшить движение», все перемещения и масштабы заменяются короткими затуханиями. Подложки выделения переставляются мгновенно.',spec:'все переходы → opacity, 150 мс ease\nбез spring, без сдвигов и масштаба\nвращение кольца синхронизации → пульсация',
+  frames:[[1,0],[0.5,0.5],[0,1],[0,1]].map(([a,b],i)=>({c:['Было','Затухание','Стало','Итог'][i],t:['0','75','150','—'][i]+(i<3?' мс':''),boxes:[
+    B(0,0,44,150,{r:0,bg:'#ECECF0'}),B(6,i>=1?80-4:12-4,32,32,{r:9,bg:'rgba(0,0,0,0.08)'}),...['#3B82F6','#FA8C33','#8C5CF5'].map((c,k)=>B(10,16+k*34,24,24,{r:7,bg:c})),
+    B(54,18,70,8,{bg:'#C9C9D1',op:a}),B(54,18,60,8,{bg:'#9E9EA8',op:b}),...[0,1,2,3].map(k=>B(134,48+k*24,76,16,{r:5,bg:G2,op:0.4+0.6*Math.max(a,b)}))]}))}];
+class Component extends DCLogic { renderVals(){ return {anims:ANIMS}; } }
+</script>
+</body>
+</html>

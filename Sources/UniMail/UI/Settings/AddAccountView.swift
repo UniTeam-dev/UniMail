@@ -3,7 +3,7 @@ import SwiftUI
 /// Встроенные настройки серверов популярных провайдеров. Этап 2: + Mozilla ISPDB и SRV-записи.
 enum ServerPresets {
     static func settings(for email: String) -> ServerSettings? {
-        guard let domain = email.split(separator: "@").last?.lowercased() else { return nil }
+        guard let domain = email.split(separator: "@").last?.lowercased(), domain.contains(".") else { return nil }
         let map: [String: (String, String)] = [
             "yandex.ru": ("imap.yandex.ru", "smtp.yandex.ru"),
             "ya.ru": ("imap.yandex.ru", "smtp.yandex.ru"),
@@ -15,6 +15,7 @@ enum ServerPresets {
             "icloud.com": ("imap.mail.me.com", "smtp.mail.me.com"),
             "me.com": ("imap.mail.me.com", "smtp.mail.me.com"),
             "gmail.com": ("imap.gmail.com", "smtp.gmail.com"),
+            "fastmail.com": ("imap.fastmail.com", "smtp.fastmail.com"),
             "outlook.com": ("outlook.office365.com", "smtp.office365.com"),
             "hotmail.com": ("outlook.office365.com", "smtp.office365.com"),
         ]
@@ -22,157 +23,302 @@ enum ServerPresets {
             let (imap, smtp) = pair
             let icloud = imap == "imap.mail.me.com"
             let office = imap == "outlook.office365.com"
+            let starttls = icloud || office
             return ServerSettings(
                 imapHost: imap, imapPort: 993,
-                smtpHost: smtp, smtpPort: icloud || office ? 587 : 465,
-                username: icloud ? String(email.split(separator: "@").first ?? "") : email
+                smtpHost: smtp, smtpPort: starttls ? 587 : 465,
+                username: icloud ? String(email.split(separator: "@").first ?? "") : email,
+                imapSecurity: .tls, smtpSecurity: starttls ? .starttls : .tls
             )
         }
         return ServerSettings(imapHost: "imap.\(domain)", smtpHost: "smtp.\(domain)", username: email)
     }
 }
 
-/// Мастер добавления аккаунта: выбор провайдера → данные входа.
+/// Мастер «Добавить почтовый ящик»: шаг 1 — провайдер, шаг 2 — данные и серверы (экран 10 макета).
 @MainActor
 struct AddAccountView: View {
     @Environment(MailStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    @State private var kind: ProviderKind?
-    @State private var name = ""
+    @State private var step = 1
+    @State private var kind: ProviderKind = .imap
+    @State private var senderName = ""
     @State private var email = ""
     @State private var password = ""
-    @State private var server = ServerSettings(imapHost: "", smtpHost: "", username: "")
+    @State private var label = ""
     @State private var tint: AccountTint = .green
-    @State private var showServer = false
+    @State private var server = ServerSettings(imapHost: "", smtpHost: "", username: "")
+    @State private var serversOpen = true
 
     var body: some View {
         VStack(spacing: 0) {
+            // Шапка 40 pt со шкалой шагов
             HStack {
-                if kind != nil {
-                    Button {
-                        withAnimation(Motion.smooth) { kind = nil }
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .buttonStyle(.borderless)
-                    .transition(.opacity)
-                }
-                Text(kind.map { "Подключить \($0.title)" } ?? "Добавить почтовый ящик")
-                    .font(.title2.weight(.bold))
-                    .contentTransition(.opacity)
                 Spacer()
+                HStack(spacing: 5) {
+                    Capsule().fill(UM.accent).frame(width: 18, height: 4)
+                    Capsule().fill(step == 2 ? UM.accent : UM.dim).frame(width: 18, height: 4)
+                }
+                .animation(Motion.smooth, value: step)
             }
-            .padding(20)
+            .padding(.horizontal, 16)
+            .frame(height: 40)
 
-            ZStack {
-                if let kind {
-                    form(kind)
-                        .transition(.push(from: .trailing))
+            ZStack(alignment: .top) {
+                if step == 1 {
+                    providerStep
+                        .transition(Motion.reduce ? AnyTransition.opacity : .push(from: .leading))
                 } else {
-                    picker
-                        .transition(.push(from: .leading))
+                    detailsStep
+                        .transition(Motion.reduce ? AnyTransition.opacity : .push(from: .trailing))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .clipped()
+            .animation(Motion.smooth, value: step)
 
-            Divider()
-            HStack {
-                Button("Отмена") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                if let kind {
-                    Button("Добавить") { add(kind) }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(!canAdd(kind))
+            HStack(spacing: 8) {
+                if step == 2 {
+                    Button { step = 1 } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
+                            Text("Назад")
+                        }
+                        .foregroundStyle(UM.fg2)
+                        .padding(.horizontal, 12)
+                        .frame(height: 28)
+                    }
+                    .buttonStyle(HoverStyle(radius: 7))
                 }
+                Spacer()
+                Button("Отмена") { dismiss() }
+                    .buttonStyle(UMButtonStyle(kind: .secondary, height: 28, radius: 7))
+                    .keyboardShortcut(.cancelAction)
+                Button(step == 1 ? "Продолжить" : "Добавить ящик") {
+                    if step == 1 { prepareDetails() } else { add() }
+                }
+                .buttonStyle(UMButtonStyle(kind: .primary, height: 28, radius: 7, horizontal: 16))
+                .keyboardShortcut(.defaultAction)
+                .disabled(step == 2 && !canAdd)
             }
-            .padding(16)
+            .padding(.horizontal, 20)
+            .frame(height: 60)
+            .hairline(.top)
         }
         .frame(width: 560, height: 520)
-        .animation(Motion.smooth, value: kind)
+        .background(UM.sheet)
+        .foregroundStyle(UM.fg)
+        .font(.system(size: 13))
     }
 
-    // MARK: Шаг 1 — выбор провайдера
+    // MARK: Шаг 1
 
-    private var picker: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            ForEach(ProviderKind.allCases) { option in
-                ProviderCard(kind: option) {
-                    kind = option
-                    tint = AccountTint.allCases[(store.accounts.count + 3) % AccountTint.allCases.count]
-                    if option == .demo {
-                        name = "Демо \(store.accounts.count + 1)"
-                        email = "demo\(store.accounts.count + 1)@example.com"
+    private var providerStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Добавить почтовый ящик")
+                .font(.system(size: 22, weight: .bold))
+                .tracking(-0.44)
+            Text("Письма скачиваются и хранятся только на этом Mac. UniMail не пересылает их на свои серверы.")
+                .font(.system(size: 13))
+                .foregroundStyle(UM.fg2)
+                .lineSpacing(3)
+                .padding(.top, 6)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                ForEach(ProviderKind.allCases) { option in
+                    ProviderCard(kind: option, selected: option == kind) {
+                        withAnimation(Motion.snappy) { kind = option }
                     }
                 }
             }
+            .padding(.top, 22)
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill").font(.system(size: 12))
+                Text("Пароль хранится в Связке ключей macOS, а не в UniMail")
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(UM.fg3)
+            .padding(.bottom, 14)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 32)
+        .padding(.top, 6)
     }
 
-    // MARK: Шаг 2 — данные
+    // MARK: Шаг 2
 
-    @ViewBuilder
-    private func form(_ kind: ProviderKind) -> some View {
-        Form {
-            if !kind.isAvailable {
-                Section {
-                    Label {
-                        Text(stageNote(kind))
-                    } icon: {
-                        Image(systemName: "hammer.fill").foregroundStyle(.orange)
+    private var detailsStep: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 12) {
+                    Text(String((label.isEmpty ? kind.title : label).prefix(1)).uppercased())
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(tint.color))
+                        .animation(Motion.smooth, value: tint)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(kind.title).font(.system(size: 19, weight: .bold)).tracking(-0.38)
+                        Text(kind.detail).font(.system(size: 12.5)).foregroundStyle(UM.fg2)
                     }
-                    .font(.callout)
                 }
-            }
 
-            Section {
-                TextField("Имя", text: $name, prompt: Text("Например, «Работа»"))
-                TextField("Адрес", text: $email, prompt: Text("you@example.com"))
-                    .onChange(of: email) { _, value in
-                        if let preset = ServerPresets.settings(for: value) { server = preset }
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                    formRow("Имя") { field("Как вас подписывать", text: $senderName) }
+                    formRow("Адрес") {
+                        field("name@example.com", text: $email)
+                            .onChange(of: email) { _, value in
+                                if let preset = ServerPresets.settings(for: value) { server = preset }
+                            }
                     }
+                    if kind.usesPassword {
+                        formRow("Пароль") {
+                            VStack(alignment: .leading, spacing: 4) {
+                                field("Пароль или пароль приложения", text: $password, secure: true)
+                                if let help = passwordHelp {
+                                    Link(help.0, destination: help.1).font(.system(size: 11.5))
+                                }
+                            }
+                        }
+                    }
+                    formRow("Название ящика") { field("Например, Работа", text: $label) }
+                    formRow("Цвет") {
+                        HStack(spacing: 8) {
+                            ForEach(AccountTint.allCases, id: \.self) { option in
+                                let on = option == tint
+                                Circle()
+                                    .fill(option.color)
+                                    .frame(width: 20, height: 20)
+                                    .overlay(Circle().strokeBorder(Color.black.opacity(on ? 0 : 0.15), lineWidth: 0.5))
+                                    .padding(on ? 2 : 0)
+                                    .overlay(Circle().strokeBorder(on ? option.color : .clear, lineWidth: 2).padding(on ? -2 : 0))
+                                    .scaleEffect(on ? 1.1 : 1)
+                                    .animation(Motion.bouncy, value: on)
+                                    .onTapGesture { tint = option }
+                                    .help(option.title)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 22)
+
                 if kind.usesPassword {
-                    SecureField(kind == .icloud || kind == .gmail ? "Пароль приложения" : "Пароль", text: $password)
-                    if let help = passwordHelp(kind) {
-                        Link(help.title, destination: help.url).font(.caption)
-                    }
-                }
-                Picker("Цвет", selection: $tint) {
-                    ForEach(AccountTint.allCases, id: \.self) { t in
-                        HStack { Circle().fill(t.color).frame(width: 10, height: 10); Text(t.rawValue.capitalized) }
-                            .tag(t)
-                    }
+                    serversCard.padding(.top, 18)
                 }
             }
-
-            if kind == .imap || kind == .outlook {
-                Section(isExpanded: $showServer) {
-                    TextField("IMAP-сервер", text: $server.imapHost)
-                    TextField("IMAP-порт", value: $server.imapPort, format: .number.grouping(.never))
-                    TextField("SMTP-сервер", text: $server.smtpHost)
-                    TextField("SMTP-порт", value: $server.smtpPort, format: .number.grouping(.never))
-                    TextField("Логин", text: $server.username)
-                } header: {
-                    Text("Серверы (заполнены автоматически)")
-                }
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private func stageNote(_ kind: ProviderKind) -> String {
-        switch kind {
-        case .gmail: "IMAP появится на этапе 2. Нужна двухэтапная аутентификация и пароль приложения Google; пароль уже сейчас сохраняется в Связке ключей."
-        case .outlook: "IMAP появится на этапе 2. Укажите сервер Exchange (например, mail.company.ru). Если сервер outlook.office365.com, нужен OAuth — это этап 4."
-        case .icloud, .imap: "IMAP/SMTP появится на этапе 2. Пароль уже сейчас сохраняется в Связке ключей."
-        case .demo: ""
+            .padding(.horizontal, 32)
+            .padding(.top, 6)
+            .padding(.bottom, 12)
         }
     }
 
-    private func passwordHelp(_ kind: ProviderKind) -> (title: String, url: URL)? {
+    private var serversCard: some View {
+        VStack(spacing: 0) {
+            Button { withAnimation(Motion.smooth) { serversOpen.toggle() } } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(UM.fg3)
+                        .rotationEffect(.degrees(serversOpen ? 90 : 0))
+                    Text("Серверы IMAP и SMTP").fontWeight(.semibold)
+                    Spacer()
+                    if !server.imapHost.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle").font(.system(size: 12))
+                            Text("Найдены автоматически")
+                        }
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(UM.privFg)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if serversOpen {
+                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+                    GridRow {
+                        Color.clear.frame(width: 44, height: 1)
+                        Text("Сервер").foregroundStyle(UM.fg3)
+                        Text("Порт").foregroundStyle(UM.fg3)
+                        Text("Защита").foregroundStyle(UM.fg3)
+                    }
+                    serverRow("IMAP", host: $server.imapHost, port: $server.imapPort, security: imapSecurity)
+                    serverRow("SMTP", host: $server.smtpHost, port: $server.smtpPort, security: smtpSecurity)
+                }
+                .font(.system(size: 12))
+                .padding(12)
+                .hairline(.top)
+                .transition(.opacity)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(UM.card))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(UM.cardBorder, lineWidth: 0.5))
+    }
+
+    private var imapSecurity: Binding<ConnectionSecurity> {
+        Binding(get: { server.imapSecurity ?? .tls }, set: { server.imapSecurity = $0 })
+    }
+
+    private var smtpSecurity: Binding<ConnectionSecurity> {
+        Binding(get: { server.smtpSecurity ?? .tls }, set: { server.smtpSecurity = $0 })
+    }
+
+    private func serverRow(_ title: String, host: Binding<String>, port: Binding<Int>,
+                           security: Binding<ConnectionSecurity>) -> some View {
+        GridRow {
+            Text(title).fontWeight(.semibold).foregroundStyle(UM.fg2)
+            TextField("", text: host)
+                .textFieldStyle(.plain)
+                .font(UM.mono(11.5))
+                .padding(.horizontal, 8)
+                .frame(height: 26)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(UM.field))
+            TextField("", value: port, format: .number.grouping(.never))
+                .textFieldStyle(.plain)
+                .font(UM.mono(11.5))
+                .padding(.horizontal, 8)
+                .frame(width: 70, height: 26)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(UM.field))
+            Picker("", selection: security) {
+                ForEach(ConnectionSecurity.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .labelsHidden()
+            .frame(width: 110)
+        }
+    }
+
+    private func formRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        GridRow {
+            Text(title)
+                .foregroundStyle(UM.fg2)
+                .frame(width: 120, alignment: .trailing)
+                .gridColumnAlignment(.trailing)
+            content()
+        }
+    }
+
+    private func field(_ placeholder: String, text: Binding<String>, secure: Bool = false) -> some View {
+        Group {
+            if secure {
+                SecureField("", text: text, prompt: Text(placeholder).foregroundColor(UM.fg3))
+            } else {
+                TextField("", text: text, prompt: Text(placeholder).foregroundColor(UM.fg3))
+            }
+        }
+        .textFieldStyle(.plain)
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(UM.field))
+        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(UM.cardBorder, lineWidth: 0.5))
+    }
+
+    private var passwordHelp: (String, URL)? {
         switch kind {
         case .gmail: return ("Как получить пароль приложения Google", URL(string: "https://myaccount.google.com/apppasswords")!)
         case .icloud: return ("Как получить пароль приложения Apple", URL(string: "https://account.apple.com")!)
@@ -180,21 +326,32 @@ struct AddAccountView: View {
         }
     }
 
-    private func canAdd(_ kind: ProviderKind) -> Bool {
-        let emailOK = email.contains("@")
-        switch kind {
-        case .imap, .icloud, .gmail, .outlook: return emailOK && !password.isEmpty
-        default: return emailOK
+    // MARK: Логика
+
+    private func prepareDetails() {
+        let used = Set(store.accounts.map(\.tint))
+        tint = AccountTint.allCases.first { !used.contains($0) } ?? .green
+        if kind == .demo {
+            label = "Демо \(store.accounts.count + 1)"
+            email = "demo\(store.accounts.count + 1)@example.com"
         }
+        step = 2
     }
 
-    private func add(_ kind: ProviderKind) {
+    private var canAdd: Bool {
+        let emailOK = Address(name: nil, email: email).isValid
+        return kind.usesPassword ? emailOK && !password.isEmpty : emailOK
+    }
+
+    private func add() {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
         let account = Account(
-            displayName: name.isEmpty ? (email.split(separator: "@").first.map(String.init) ?? email) : name,
-            email: email.trimmingCharacters(in: .whitespaces),
+            displayName: label.isEmpty ? (trimmed.split(separator: "@").first.map(String.init) ?? trimmed) : label,
+            email: trimmed,
             kind: kind,
             tint: tint,
-            server: kind.usesPassword ? server : nil
+            server: kind.usesPassword ? server : nil,
+            senderName: senderName.isEmpty ? nil : senderName
         )
         store.addAccount(account, secret: password.isEmpty ? nil : password)
         dismiss()
@@ -204,46 +361,55 @@ struct AddAccountView: View {
 @MainActor
 private struct ProviderCard: View {
     let kind: ProviderKind
+    let selected: Bool
     var action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: kind.symbol)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 40, height: 40)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.accentColor.opacity(0.12)))
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(kind.title).font(.headline)
-                        if !kind.isAvailable {
-                            Text("скоро")
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Capsule().fill(.orange.opacity(0.18)))
-                                .foregroundStyle(.orange)
-                        }
+            VStack(alignment: .leading, spacing: 0) {
+                Group {
+                    if let letter = kind.letter {
+                        Text(letter).font(.system(size: 17, weight: .heavy))
+                    } else {
+                        Image(systemName: kind.symbol).font(.system(size: 17))
                     }
-                    Text(kind.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
-                Spacer(minLength: 0)
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color(hex: kind.tileHex)))
+                Spacer()
+                Text(kind.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                Text(kind.subtitle).font(.system(size: 11.5)).foregroundStyle(UM.fg3).padding(.top, 2)
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.primary.opacity(hovering ? 0.07 : 0.035))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(hovering ? Color.accentColor.opacity(0.5) : Color.primary.opacity(0.08))
-            )
-            .scaleEffect(hovering ? 1.015 : 1)
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 128, maxHeight: 128, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(UM.card))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(selected ? UM.accent : UM.cardBorder, lineWidth: selected ? 2 : 0.5))
+            .shadow(color: selected ? Color(red: 40 / 255, green: 80 / 255, blue: 220 / 255).opacity(0.14) : .black.opacity(0.04),
+                    radius: selected ? 7 : 1, y: selected ? 4 : 1)
+            .overlay(alignment: .topTrailing) {
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(UM.accent))
+                        .padding(12)
+                        .transition(.scale.combined(with: .opacity))
+                } else if !kind.isAvailable {
+                    Text("скоро")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(UM.fg2)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(UM.field))
+                        .padding(14)
+                        .help("Синхронизация появится на этапе 2 — ящик уже можно добавить")
+                }
+            }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { h in withAnimation(Motion.bouncy) { hovering = h } }
+        .buttonStyle(TileStyle())
     }
 }

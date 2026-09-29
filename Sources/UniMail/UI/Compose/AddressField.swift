@@ -1,23 +1,26 @@
 import SwiftUI
 
-/// Поле адресов с токенами. Enter, запятая или пробел превращают текст в токен,
-/// Backspace в пустом поле удаляет последний.
+/// Поле адресов с токенами. Enter, запятая или пробел после адреса превращают текст в токен,
+/// Backspace в пустом поле удаляет последний. Некорректный адрес — красный токен.
 /// Этап 5: автодополнение из истории переписки и Контактов macOS.
 @MainActor
 struct AddressField: View {
     @Binding var addresses: [Address]
-    var placeholder: String
+    var placeholder: String = ""
 
     @State var text = ""
 
     var body: some View {
-        FlowLayout(spacing: 4) {
+        FlowLayout(spacing: 5) {
             ForEach(addresses, id: \.email) { address in
                 token(address)
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
-            TextField(addresses.isEmpty ? placeholder : "", text: $text)
+            TextField("", text: $text, prompt: Text(addresses.isEmpty ? placeholder : "").foregroundColor(UM.fg3))
                 .textFieldStyle(.plain)
-                .frame(minWidth: 140)
+                .font(.system(size: 13))
+                .frame(minWidth: 80, idealWidth: 160)
+                .frame(height: 24)
                 .onSubmit(commit)
                 .onChange(of: text) { _, value in
                     if value.hasSuffix(",") || value.hasSuffix(";") || (value.hasSuffix(" ") && value.contains("@")) {
@@ -31,27 +34,37 @@ struct AddressField: View {
                 }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(Motion.bouncy, value: addresses)
     }
 
     private func token(_ address: Address) -> some View {
-        let valid = address.email.contains("@") && address.email.contains(".")
-        return HStack(spacing: 4) {
-            Text(address.display)
-                .font(.system(size: 12, weight: .medium))
+        let bad = !address.isValid
+        return HStack(spacing: 5) {
+            if bad {
+                Image(systemName: "exclamationmark.circle.fill").font(.system(size: 13))
+            } else {
+                SenderAvatar(address: address, size: 18, fontSize: 9)
+            }
+            Text(address.name ?? address.email)
+                .font(.system(size: 12.5, weight: .medium))
+                .lineLimit(1)
             Button {
                 withAnimation(Motion.bouncy) { addresses.removeAll { $0.email == address.email } }
             } label: {
-                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .opacity(0.55)
+                    .frame(width: 16, height: 16)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(valid ? Color.accentColor.opacity(0.14) : Color.red.opacity(0.15)))
-        .foregroundStyle(valid ? Color.primary : Color.red)
-        .help(address.full)
-        .transition(.scale.combined(with: .opacity))
+        .foregroundStyle(bad ? UM.badFg : UM.fg)
+        .padding(.leading, bad ? 7 : 3)
+        .padding(.trailing, 4)
+        .frame(height: 24)
+        .background(Capsule().fill(bad ? UM.bad : UM.field))
+        .overlay(Capsule().strokeBorder(bad ? UM.red.opacity(0.45) : .clear, lineWidth: 1))
+        .help(address.full + (bad ? " — некорректный адрес" : ""))
     }
 
     private func commit() {

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=block">
+<style>body{margin:0;-webkit-font-smoothing:antialiased}a{color:#3D6AF2}a:hover{color:#2F57D6}</style>
+</helmet>
+<div style="{{ vars }}">
+<div style="position:relative; width:720px; height:640px; border-radius:14px; overflow:hidden; background:var(--win); color:var(--fg); font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, sans-serif; font-size:13px; display:flex; flex-direction:column; box-shadow:0 0 0 0.5px var(--frame), 0 24px 70px rgba(0,0,0,0.25); user-select:none">
+  <div style="height:44px; flex:none; display:flex; align-items:center; padding:0 16px; gap:8px; border-bottom:0.5px solid var(--sep)">
+    <div style="display:flex; gap:8px">
+      <div style="width:12px; height:12px; border-radius:50%; background:#FF5F57"></div>
+      <div style="width:12px; height:12px; border-radius:50%; background:#FEBC2E"></div>
+      <div style="width:12px; height:12px; border-radius:50%; background:#28C840"></div>
+    </div>
+    <div style="flex:1; text-align:center; font-size:13px; font-weight:650">Новое письмо</div>
+    <div style="display:flex; gap:2px; color:var(--fg2)">
+      <div style="width:30px; height:26px; border-radius:7px; display:grid; place-items:center" style-hover="background:var(--hover)"><span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1">text_format</span></div>
+      <div style="width:30px; height:26px; border-radius:7px; display:grid; place-items:center" style-hover="background:var(--hover)"><span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1">open_in_full</span></div>
+    </div>
+  </div>
+
+  <div style="padding:0 20px">
+    <div style="position:relative; height:42px; display:flex; align-items:center; gap:10px; border-bottom:0.5px solid var(--sep)">
+      <div style="width:52px; color:var(--fg3)">От</div>
+      <div onClick="{{ toggleFrom }}" style="display:flex; align-items:center; gap:8px; height:28px; padding:0 8px 0 10px; border-radius:8px" style-hover="background:var(--hover)">
+        <div style="width:9px; height:9px; border-radius:3px; background:{{ from.color }}"></div>
+        <div style="font-weight:550">{{ from.name }}</div>
+        <div style="color:var(--fg3)">{{ from.email }}</div>
+        <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1; color:var(--fg3)">unfold_more</span>
+      </div>
+      <sc-if value="{{ fromOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; left:54px; top:38px; width:330px; padding:5px; border-radius:11px; background:var(--menu); backdrop-filter:blur(30px); box-shadow:var(--menuShadow); z-index:10">
+          <sc-for list="{{ froms }}" as="f" hint-placeholder-count="4">
+            <div onClick="{{ f.onClick }}" style="display:flex; align-items:center; gap:10px; height:32px; padding:0 10px; border-radius:7px" style-hover="background:var(--accent); color:#fff">
+              <div style="width:9px; height:9px; border-radius:3px; background:{{ f.color }}"></div>
+              <div style="font-weight:550">{{ f.name }}</div>
+              <div style="flex:1; opacity:0.6; font-size:12px">{{ f.email }}</div>
+              <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1; opacity:{{ f.checkOp }}">check</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+    <div style="min-height:42px; display:flex; align-items:center; gap:10px; border-bottom:0.5px solid var(--sep); padding:6px 0; box-sizing:border-box">
+      <div style="width:52px; color:var(--fg3); flex:none">Кому</div>
+      <div style="flex:1; display:flex; flex-wrap:wrap; gap:5px; align-items:center">
+        <sc-for list="{{ tokens }}" as="t" hint-placeholder-count="3">
+          <div title="{{ t.title }}" style="display:flex; align-items:center; gap:5px; height:24px; padding:0 4px 0 {{ t.padL }}px; border-radius:12px; background:{{ t.bg }}; color:{{ t.fg }}; font-size:12.5px; font-weight:500; box-shadow:{{ t.ring }}">
+            <sc-if value="{{ t.hasAv }}" hint-placeholder-val="{{ true }}"><div style="width:18px; height:18px; border-radius:50%; background:{{ t.avBg }}; color:{{ t.avFg }}; font-size:9px; font-weight:700; display:grid; place-items:center">{{ t.ini }}</div></sc-if>
+            <sc-if value="{{ t.bad }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1; font-variation-settings:'FILL' 1">error</span></sc-if>
+            {{ t.label }}
+            <span onClick="{{ t.remove }}" style="font-family:'Material Symbols Rounded'; font-size:14px; line-height:1; opacity:0.55; width:16px; text-align:center">close</span>
+          </div>
+        </sc-for>
+        <input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onDraftKey }}" placeholder="" style="flex:1; min-width:80px; border:none; outline:none; background:transparent; font:inherit; color:var(--fg)">
+      </div>
+      <sc-if value="{{ ccHidden }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ showCc }}" style="color:var(--fg3); font-size:12.5px; padding:3px 6px; border-radius:6px" style-hover="background:var(--hover); color:var(--fg)">Копия, Скрытая</div>
+      </sc-if>
+    </div>
+    <sc-if value="{{ ccShown }}" hint-placeholder-val="{{ false }}">
+      <div style="height:42px; display:flex; align-items:center; gap:10px; border-bottom:0.5px solid var(--sep)">
+        <div style="width:52px; color:var(--fg3)">Копия</div>
+        <div style="display:flex; align-items:center; gap:5px; height:24px; padding:0 8px 0 4px; border-radius:12px; background:var(--field); font-size:12.5px; font-weight:500">
+          <div style="width:18px; height:18px; border-radius:50%; background:oklch(0.91 0.05 170); color:oklch(0.42 0.11 170); font-size:9px; font-weight:700; display:grid; place-items:center">СЛ</div>Сергей Лебедев</div>
+      </div>
+      <div style="height:42px; display:flex; align-items:center; gap:10px; border-bottom:0.5px solid var(--sep)">
+        <div style="width:52px; color:var(--fg3)">Скрытая</div>
+      </div>
+    </sc-if>
+    <div style="height:46px; display:flex; align-items:center; gap:10px; border-bottom:0.5px solid var(--sep)">
+      <div style="width:52px; color:var(--fg3)">Тема</div>
+      <div style="font-size:15px; font-weight:650; letter-spacing:-0.01em">Итоги ревью дизайн-системы</div>
+    </div>
+  </div>
+
+  <div contenteditable="true" style="flex:1; min-height:0; overflow:auto; padding:18px 20px 8px 82px; font-size:13.5px; line-height:1.6; outline:none; user-select:text">
+    <p style="margin:0 0 10px">Коллеги, привет!</p>
+    <p style="margin:0 0 10px">Собрала итоги четверговой встречи. Токены обеих тем утверждаем, типографику списка оставляем в трёх плотностях, по умолчанию — обычная. Свайпы и плашку «Отменить» Михаил доработает к следующей неделе.</p>
+    <p style="margin:0 0 10px">Презентация и таблица токенов во вложении. Если есть замечания — отвечайте прямо в треде до пятницы.</p>
+    <p style="margin:0; color:var(--fg3)">—<br>Анна Волкова · Северлаб</p>
+  </div>
+
+  <div style="display:flex; gap:8px; padding:8px 20px 12px 82px; flex-wrap:wrap">
+    <sc-for list="{{ att }}" as="f" hint-placeholder-count="2">
+      <div style="display:flex; align-items:center; gap:9px; padding:5px 8px 5px 5px; border-radius:10px; background:var(--inset); border:0.5px solid var(--cardBorder)">
+        <div style="width:30px; height:30px; border-radius:7px; background:{{ f.bg }}; color:{{ f.c }}; display:grid; place-items:center"><span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1; font-variation-settings:'FILL' 1">{{ f.icon }}</span></div>
+        <div><div style="font-size:12.5px; font-weight:550">{{ f.name }}</div><div style="font-size:11px; color:var(--fg3)">{{ f.size }}</div></div>
+        <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1; color:var(--fg3); margin-left:4px">close</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="height:56px; flex:none; display:flex; align-items:center; gap:8px; padding:0 14px 0 16px; border-top:0.5px solid var(--sep); background:var(--list)">
+    <div style="height:30px; display:flex; align-items:center; gap:6px; padding:0 12px 0 9px; border-radius:8px; background:var(--field); font-size:12.5px; font-weight:550" style-hover="background:var(--press)">
+      <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1; transform:rotate(45deg)">attach_file</span>Вложить</div>
+    <div onClick="{{ toggleSep }}" style="display:flex; align-items:center; gap:8px; padding:0 8px; height:30px; border-radius:8px; font-size:12.5px" style-hover="background:var(--hover)">
+      <div style="width:28px; height:17px; border-radius:9px; background:{{ sepTrack }}; position:relative; transition:background .2s">
+        <div style="position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.25); transform:translateX({{ sepX }}px); transition:transform .25s cubic-bezier(.34,1.5,.64,1)"></div>
+      </div>Каждому отдельно</div>
+    <sc-if value="{{ hasSched }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; align-items:center; gap:6px; height:26px; padding:0 4px 0 9px; border-radius:13px; background:var(--accentSoft); color:var(--accent); font-size:12px; font-weight:600">
+        <span style="font-family:'Material Symbols Rounded'; font-size:15px; line-height:1">schedule_send</span>Отправится 30 сент., 08:00
+        <span onClick="{{ clearSched }}" style="font-family:'Material Symbols Rounded'; font-size:14px; line-height:1; width:18px; text-align:center">close</span></div>
+    </sc-if>
+    <div style="flex:1"></div>
+    <div title="Удалить черновик" style="width:32px; height:30px; border-radius:8px; display:grid; place-items:center; color:var(--fg2)" style-hover="background:var(--hover)"><span style="font-family:'Material Symbols Rounded'; font-size:19px; line-height:1">delete</span></div>
+    <div style="display:flex; height:30px; border-radius:8px; overflow:hidden; background:var(--accent); color:#fff; box-shadow:0 1px 2px rgba(40,80,220,0.3)">
+      <div style="display:flex; align-items:center; gap:6px; padding:0 12px 0 14px; font-size:13px; font-weight:650" style-active="background:rgba(0,0,0,0.12)">
+        <span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1">{{ sendIcon }}</span>{{ sendLabel }}</div>
+      <div style="width:0.5px; background:rgba(255,255,255,0.35); margin:6px 0"></div>
+      <div onClick="{{ toggleMenu }}" style="width:28px; display:grid; place-items:center" style-hover="background:rgba(0,0,0,0.1)"><span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1">expand_more</span></div>
+    </div>
+  </div>
+
+  <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; right:14px; bottom:62px; display:flex; gap:8px; align-items:flex-end; z-index:20">
+      <div style="width:282px; padding:14px; border-radius:13px; background:var(--menu); backdrop-filter:blur(30px); box-shadow:var(--menuShadow)">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px">
+          <div style="font-size:13px; font-weight:650">Сентябрь 2026</div>
+          <div style="display:flex; color:var(--fg3)"><span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1">chevron_left</span><span style="font-family:'Material Symbols Rounded'; font-size:18px; line-height:1">chevron_right</span></div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(7, 1fr); text-align:center; row-gap:2px">
+          <sc-for list="{{ wd }}" as="w" hint-placeholder-count="7"><div style="font-size:10px; font-weight:600; color:var(--fg3); padding-bottom:4px">{{ w }}</div></sc-for>
+          <sc-for list="{{ days }}" as="d" hint-placeholder-count="35">
+            <div onClick="{{ d.onClick }}" style="height:30px; display:grid; place-items:center">
+              <div style="width:28px; height:28px; border-radius:50%; display:grid; place-items:center; font-size:12px; background:{{ d.bg }}; color:{{ d.fg }}; font-weight:{{ d.w }}; box-shadow:{{ d.ring }}">{{ d.n }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex; gap:5px; margin-top:10px">
+          <sc-for list="{{ times }}" as="tm" hint-placeholder-count="4">
+            <div onClick="{{ tm.onClick }}" style="flex:1; height:28px; border-radius:7px; display:grid; place-items:center; font-size:12px; font-weight:600; background:{{ tm.bg }}; color:{{ tm.fg }}; font-variant-numeric:tabular-nums">{{ tm.t }}</div>
+          </sc-for>
+        </div>
+        <div style="margin-top:12px; height:30px; border-radius:8px; background:var(--accent); color:#fff; display:grid; place-items:center; font-size:12.5px; font-weight:650">Запланировать · {{ pick }}</div>
+      </div>
+      <div style="width:230px; padding:5px; border-radius:11px; background:var(--menu); backdrop-filter:blur(30px); box-shadow:var(--menuShadow)">
+        <div style="display:flex; align-items:center; gap:10px; height:30px; padding:0 10px; border-radius:7px" style-hover="background:var(--accent); color:#fff">
+          <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">send</span><div style="flex:1">Отправить сейчас</div><div style="opacity:0.55; font-size:12px">⌘↩</div></div>
+        <div style="display:flex; align-items:center; gap:10px; height:30px; padding:0 10px; border-radius:7px; background:var(--accent); color:#fff">
+          <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">schedule_send</span><div style="flex:1">Отправить позже</div><span style="font-family:'Material Symbols Rounded'; font-size:16px; line-height:1">chevron_right</span></div>
+        <div style="height:0.5px; background:var(--sepStrong); margin:5px 8px"></div>
+        <div style="display:flex; align-items:center; gap:10px; height:30px; padding:0 10px; border-radius:7px; color:var(--fg2)" style-hover="background:var(--accent); color:#fff">
+          <span style="font-family:'Material Symbols Rounded'; font-size:17px; line-height:1">notifications</span>Напомнить, если нет ответа</div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:720,&quot;height&quot;:640},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;sendMenu&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const T={light:{'--win':'#FFFFFF','--list':'#F9F9FA','--frame':'rgba(0,0,0,0.22)','--fg':'#1C1C1F','--fg2':'#5C5C66','--fg3':'#8E8E98','--sep':'rgba(0,0,0,0.07)','--sepStrong':'rgba(0,0,0,0.11)','--hover':'rgba(0,0,0,0.045)','--press':'rgba(0,0,0,0.08)','--accent':'#3D6AF2','--accentSoft':'rgba(61,106,242,0.12)','--inset':'#F6F6F8','--cardBorder':'rgba(0,0,0,0.08)','--field':'rgba(0,0,0,0.05)','--menu':'rgba(250,250,252,0.94)','--menuShadow':'0 0 0 0.5px rgba(0,0,0,0.14), 0 20px 50px rgba(0,0,0,0.18)','--bad':'rgba(240,69,69,0.12)','--badFg':'#D12F2F'},
+ dark:{'--win':'#1C1C1F','--list':'#202024','--frame':'rgba(255,255,255,0.14)','--fg':'#F1F1F4','--fg2':'#ABABB5','--fg3':'#767680','--sep':'rgba(255,255,255,0.07)','--sepStrong':'rgba(255,255,255,0.11)','--hover':'rgba(255,255,255,0.055)','--press':'rgba(255,255,255,0.1)','--accent':'#5B84FF','--accentSoft':'rgba(91,132,255,0.18)','--inset':'#232327','--cardBorder':'rgba(255,255,255,0.07)','--field':'rgba(255,255,255,0.065)','--menu':'rgba(46,46,52,0.94)','--menuShadow':'0 0 0 0.5px rgba(255,255,255,0.13), 0 24px 60px rgba(0,0,0,0.55)','--bad':'rgba(240,69,69,0.2)','--badFg':'#FF7A7A'}};
+const FROMS=[{name:'Работа',email:'a.volkova@severlab.ru',color:'#3B82F6'},{name:'Работа · алиас',email:'design@severlab.ru',color:'#3B82F6'},{name:'Личное',email:'anna.volkova@icloud.com',color:'#FA8C33'},{name:'Студия',email:'hello@volkova.studio',color:'#8C5CF5'}];
+const valid=e=>/^[^@\s]+@[^@\s]+\.[a-zа-я]{2,}$/i.test(e);
+class Component extends DCLogic {
+  state={from:0,fromOpen:false,cc:false,sep:false,sched:true,menu:!!this.props.sendMenu,day:30,time:'08:00',draft:'',
+    tokens:[{label:'Ирина Ким',email:'i.kim@severlab.ru',h:330},{label:'Михаил Орлов',email:'m.orlov@severlab.ru',h:250},{label:'olga.belova@severlab',email:'olga.belova@severlab'}]};
+  componentDidUpdate(p){if(p.sendMenu!==this.props.sendMenu)this.setState({menu:!!this.props.sendMenu});}
+  renderVals(){
+    const s=this.state,dark=this.props.theme==='dark';
+    const av=h=>dark?{bg:`oklch(0.36 0.07 ${h})`,fg:`oklch(0.9 0.07 ${h})`}:{bg:`oklch(0.91 0.05 ${h})`,fg:`oklch(0.42 0.11 ${h})`};
+    const tokens=s.tokens.map((t,i)=>{const bad=!valid(t.email);const a=av(t.h||0);const named=t.label!==t.email;
+      return {label:t.label,title:t.email+(bad?' — некорректный адрес':''),bad,hasAv:!bad,ini:t.label.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(),avBg:a.bg,avFg:a.fg,padL:bad?7:3,
+        bg:bad?'var(--bad)':'var(--field)',fg:bad?'var(--badFg)':'var(--fg)',ring:bad?'inset 0 0 0 1px color-mix(in oklch, #F04545 45%, transparent)':'none',
+        remove:()=>this.setState(st=>({tokens:st.tokens.filter((_,j)=>j!==i)}))};});
+    const days=[{n:31,off:true}];for(let d=1;d<=30;d++)days.push({n:d});for(let d=1;d<=4;d++)days.push({n:d,off:true,next:true});
+    const f=FROMS[s.from];
+    return {vars:T[dark?'dark':'light'],from:f,fromOpen:s.fromOpen,toggleFrom:()=>this.setState({fromOpen:!s.fromOpen}),
+      froms:FROMS.map((x,i)=>({...x,checkOp:i===s.from?1:0,onClick:()=>this.setState({from:i,fromOpen:false})})),
+      tokens,draft:s.draft,onDraft:e=>this.setState({draft:e.target.value}),
+      onDraftKey:e=>{if((e.key==='Enter'||e.key===','||e.key===' ')&&s.draft.trim()){e.preventDefault();const v=s.draft.trim().replace(/,$/,'');this.setState(st=>({tokens:[...st.tokens,{label:v,email:v,h:120}],draft:''}));}
+        if(e.key==='Backspace'&&!s.draft)this.setState(st=>({tokens:st.tokens.slice(0,-1)}));},
+      ccHidden:!s.cc,ccShown:s.cc,showCc:()=>this.setState({cc:true}),
+      att:[{name:'Ревью_ДС_1окт.key',size:'8,6 МБ',icon:'slideshow',c:'#FA8C33'},{name:'Токены_UniMail.xlsx',size:'96 КБ',icon:'table',c:'#33BD73'}].map(a=>({...a,bg:`color-mix(in oklch, ${a.c} ${dark?24:14}%, transparent)`})),
+      sepTrack:s.sep?'var(--accent)':'var(--sepStrong)',sepX:s.sep?11:0,toggleSep:()=>this.setState({sep:!s.sep}),
+      hasSched:s.sched,clearSched:()=>this.setState({sched:false}),sendLabel:s.sched?'Запланировать':'Отправить',sendIcon:s.sched?'schedule_send':'send',
+      menuOpen:s.menu,toggleMenu:()=>this.setState({menu:!s.menu}),
+      wd:['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],
+      days:days.map(d=>{const on=!d.off&&d.n===s.day;const today=!d.off&&d.n===29;const past=!d.off&&d.n<29;
+        return {n:d.n,bg:on?'var(--accent)':'transparent',fg:on?'#fff':(d.off||past?'var(--fg3)':'var(--fg)'),w:on||today?700:450,ring:today&&!on?'inset 0 0 0 1px var(--accent)':'none',
+          onClick:()=>{if(!d.off&&!past)this.setState({day:d.n,sched:true});}};}),
+      times:['08:00','09:30','13:00','18:00'].map(t=>({t,bg:t===s.time?'var(--accentSoft)':'var(--field)',fg:t===s.time?'var(--accent)':'var(--fg)',onClick:()=>this.setState({time:t})})),
+      pick:s.day+' сент., '+s.time};
+  }
+}
+</script>
+</body>
+</html>

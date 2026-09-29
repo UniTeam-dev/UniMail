@@ -32,7 +32,10 @@ struct ScheduleEvent: Identifiable, Hashable {
     var subtitle: String
     var start: Date
     var end: Date
-    var accountID: UUID
+    /// Ящик, к которому относится встреча; nil — событие системного календаря.
+    var accountID: UUID?
+    /// Цвет календаря (hex) для событий из системного Календаря.
+    var colorHex: UInt32? = nil
     /// Встреча из письма (приглашение ещё без ответа) — рисуется пунктиром.
     var fromMail = false
 }

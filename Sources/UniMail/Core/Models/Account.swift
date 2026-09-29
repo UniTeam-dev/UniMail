@@ -73,8 +73,8 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Этап плана, на котором появится настоящая синхронизация.
-    var isAvailable: Bool { self == .demo }
+    /// Все виды ящиков подключаются по IMAP/SMTP.
+    var isAvailable: Bool { true }
 
     /// Все реальные аккаунты подключаются по IMAP/SMTP с паролем.
     var usesPassword: Bool { self != .demo }

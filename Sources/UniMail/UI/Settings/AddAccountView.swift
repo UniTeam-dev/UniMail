@@ -50,6 +50,9 @@ struct AddAccountView: View {
     @State private var tint: AccountTint = .green
     @State private var server = ServerSettings(imapHost: "", smtpHost: "", username: "")
     @State private var serversOpen = true
+    /// Проверка входа перед добавлением.
+    @State private var verifying = false
+    @State private var verifyError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -91,17 +94,38 @@ struct AddAccountView: View {
                     }
                     .buttonStyle(HoverStyle(radius: 7))
                 }
+                if step == 2, let verifyError {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(UM.orange)
+                        Text(verifyError)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(UM.fg2)
+                            .lineLimit(2)
+                            .help(verifyError)
+                    }
+                    .transition(.opacity)
+                }
                 Spacer()
                 Button("Отмена") { dismiss() }
                     .buttonStyle(UMButtonStyle(kind: .secondary, height: 28, radius: 7))
                     .keyboardShortcut(.cancelAction)
-                Button(step == 1 ? "Продолжить" : "Добавить ящик") {
-                    if step == 1 { prepareDetails() } else { add() }
+                if step == 2 && verifyError != nil {
+                    Button("Добавить всё равно") { add() }
+                        .buttonStyle(UMButtonStyle(kind: .secondary, height: 28, radius: 7))
+                }
+                Button {
+                    if step == 1 { prepareDetails() } else { verifyAndAdd() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if verifying { ProgressView().controlSize(.small) }
+                        Text(step == 1 ? "Продолжить" : (verifying ? "Проверяю вход…" : "Добавить ящик"))
+                    }
                 }
                 .buttonStyle(UMButtonStyle(kind: .primary, height: 28, radius: 7, horizontal: 16))
                 .keyboardShortcut(.defaultAction)
-                .disabled(step == 2 && !canAdd)
+                .disabled(step == 2 && (!canAdd || verifying))
             }
+            .animation(Motion.snappy, value: verifyError)
             .padding(.horizontal, 20)
             .frame(height: 60)
             .hairline(.top)
@@ -343,9 +367,33 @@ struct AddAccountView: View {
         return kind.usesPassword ? emailOK && !password.isEmpty : emailOK
     }
 
+    /// Сначала проверяем вход по IMAP и SMTP: неверный пароль виден сразу, а не после добавления.
+    private func verifyAndAdd() {
+        guard kind.usesPassword else { add(); return }
+        verifying = true
+        verifyError = nil
+        let account = makeAccount()
+        let secret = password
+        Task {
+            do {
+                try await store.verify(account, secret: secret)
+                verifying = false
+                add()
+            } catch {
+                verifying = false
+                verifyError = error.localizedDescription
+            }
+        }
+    }
+
     private func add() {
+        store.addAccount(makeAccount(), secret: password.isEmpty ? nil : password)
+        dismiss()
+    }
+
+    private func makeAccount() -> Account {
         let trimmed = email.trimmingCharacters(in: .whitespaces)
-        let account = Account(
+        return Account(
             displayName: label.isEmpty ? (trimmed.split(separator: "@").first.map(String.init) ?? trimmed) : label,
             email: trimmed,
             kind: kind,
@@ -353,8 +401,6 @@ struct AddAccountView: View {
             server: kind.usesPassword ? server : nil,
             senderName: senderName.isEmpty ? nil : senderName
         )
-        store.addAccount(account, secret: password.isEmpty ? nil : password)
-        dismiss()
     }
 }
 
@@ -397,15 +443,6 @@ private struct ProviderCard: View {
                         .background(Circle().fill(UM.accent))
                         .padding(12)
                         .transition(.scale.combined(with: .opacity))
-                } else if !kind.isAvailable {
-                    Text("скоро")
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(UM.fg2)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(UM.field))
-                        .padding(14)
-                        .help("Синхронизация появится на этапе 2 — ящик уже можно добавить")
                 }
             }
             .contentShape(Rectangle())

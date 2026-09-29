@@ -24,7 +24,8 @@ extension MailStore {
 
     func events(on day: Date, accountFilter: UUID?) -> [ScheduleEvent] {
         var result: [ScheduleEvent] = []
-        if calendar.isDateInToday(day) {
+        // Демо-встречи — только пока подключены лишь демо-ящики.
+        if calendar.isDateInToday(day) && onlyDemoAccounts {
             let demo: [(String, String, Int, Int, Int, Int, Int)] = [
                 ("Стендап дизайна", "10:00–10:30", 10, 0, 10, 30, 0),
                 ("Обед с Катей", "12:30–13:30 · «Пекарня на Литейном»", 12, 30, 13, 30, 1),
@@ -54,6 +55,9 @@ extension MailStore {
             .sorted { $0.start < $1.start }
     }
 
+    /// Подключены только демо-ящики (нет настоящих).
+    var onlyDemoAccounts: Bool { accounts.allSatisfy { $0.kind == .demo } }
+
     func markers(on day: Date, accountFilter: UUID?) -> [ScheduleMarker] {
         var result: [ScheduleMarker] = []
         for m in messages.values where accountFilter == nil || m.accountID == accountFilter {
@@ -79,13 +83,13 @@ extension MailStore {
         var items: [AgendaItem] = []
         let time = { (d: Date) in d.formatted(.dateTime.hour().minute()) }
 
-        if let work = demoAccount(0) {
+        if onlyDemoAccounts, let work = demoAccount(0) {
             items.append(AgendaItem(id: "a1", kind: .event, title: "Планирование спринта", subtitle: "\(account(work)?.displayName ?? "") · 1 ч",
                                     date: today(11, plusDays: 1), timeText: "11:00", accountID: work))
             items.append(AgendaItem(id: "a2", kind: .task, title: "Срок: DS-214 «Тёмная тема для списка»", subtitle: "Из письма Трекера задач",
                                     date: today(9, plusDays: 3), timeText: "весь день", accountID: work))
         }
-        if let home = demoAccount(1) {
+        if onlyDemoAccounts, let home = demoAccount(1) {
             items.append(AgendaItem(id: "a3", kind: .event, title: "Йога", subtitle: account(home)?.displayName ?? "",
                                     date: today(19, 30, plusDays: 3), timeText: "19:30", accountID: home))
         }
@@ -135,7 +139,9 @@ extension MailStore {
             if m.role == .scheduled, let at = m.scheduledAt { add(at) }
             if m.role == .snoozed, let at = m.snoozedUntil { add(at) }
         }
-        for offset in [1, 3] { add(today(10, plusDays: offset)) }
+        if onlyDemoAccounts {
+            for offset in [1, 3] { add(today(10, plusDays: offset)) }
+        }
         return days
     }
 

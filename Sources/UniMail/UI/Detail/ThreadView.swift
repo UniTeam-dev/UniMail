@@ -17,6 +17,8 @@ struct ThreadView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header(messages)
+                    AISummaryView(threadID: threadID)
+                        .padding(.top, 16)
                     VStack(spacing: 8) {
                         ForEach(messages) { message in
                             let isOpen = expanded[message.id] ?? (message.id == last?.id)
@@ -51,6 +53,9 @@ struct ThreadView: View {
             }
         }
         .animation(Motion.smooth, value: expanded)
+        // Тела писем скачиваются при открытии треда (из базы или с сервера).
+        .task(id: threadID) { store.loadBodies(threadID: threadID) }
+        .onChange(of: expanded) { store.loadBodies(threadID: threadID) }
     }
 
     private func isMine(_ message: Message) -> Bool {
@@ -67,6 +72,8 @@ struct ThreadView: View {
         var seen = Set<UUID>()
         let accounts = messages.map(\.accountID).filter { seen.insert($0).inserted }.compactMap { store.account($0) }
         let isNewsletter = messages.contains { $0.category == .newsletters }
+        let unsubscribable = messages.last { UnsubscribeService.shared.canUnsubscribe($0) }
+        let awaitingReply = store.isAwaitingReply(threadID: threadID)
         return VStack(alignment: .leading, spacing: 12) {
             Text(subject)
                 .font(.system(size: 23, weight: .bold))
@@ -80,11 +87,23 @@ struct ThreadView: View {
                     Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 11))
                     Text("\(messages.count) \(plural(messages.count, "письмо", "письма", "писем")) в треде")
                 }
-                if isNewsletter {
+                if let unsubscribable {
+                    UnsubscribeChip(message: unsubscribable)
+                } else if isNewsletter {
+                    InfoChip { Text("Рассылка") }
+                }
+                if awaitingReply {
                     InfoChip {
-                        Text("Рассылка ·")
-                        Text("Отписаться").foregroundStyle(UM.accent).fontWeight(.medium)
+                        Image(systemName: "arrowshape.turn.up.left.badge.clock").font(.system(size: 11))
+                        Text("Нет ответа ·").foregroundStyle(UM.orange)
+                        Button("Снять") {
+                            withAnimation(Motion.snappy) { store.dismissFollowUp(threadID: threadID) }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(UM.accent)
+                        .fontWeight(.medium)
                     }
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
         }
@@ -157,6 +176,7 @@ struct MessageCard: View {
                             .font(.system(size: 13.5, weight: .semibold))
                             .lineLimit(1)
                             .fixedSize()
+                            .contextMenu { senderMenu }
                         Text(message.from.email)
                             .font(.system(size: 12))
                             .foregroundStyle(UM.fg3)
@@ -177,14 +197,19 @@ struct MessageCard: View {
             .contentShape(Rectangle())
             .onTapGesture(perform: onToggle)
 
+            if message.role == .scheduled || message.role == .drafts {
+                OutboxBar(message: message).padding(.top, 14)
+            }
             if let invite = message.invite {
-                InviteBlock(invite: invite).padding(.top, 16)
+                InviteBlock(message: message, invite: invite).padding(.top, 16)
             }
             if let code = message.detectedCode {
                 CodeBlock(code: code).padding(.top, 16)
             }
 
-            if let html = message.htmlBody {
+            if message.bodyPending == true {
+                BodyPlaceholder(message: message).padding(.top, 14)
+            } else if let html = message.htmlBody {
                 HTMLBody(html: html, senderKnown: store.isKnownSender(message.from.email)).padding(.top, 14)
             } else if !message.paragraphs.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -203,7 +228,17 @@ struct MessageCard: View {
 
             if !message.attachments.isEmpty {
                 FlowLayout(spacing: 8) {
-                    ForEach(message.attachments) { AttachmentChip(attachment: $0) }
+                    ForEach(message.attachments) { attachment in
+                        AttachmentChip(attachment: attachment)
+                            .contentShape(Rectangle())
+                            .onTapGesture { AttachmentActions.open(attachment) }
+                            .contextMenu {
+                                Button("Открыть") { AttachmentActions.open(attachment) }
+                                Button("Сохранить как…") { AttachmentActions.save(attachment) }
+                                Button("Показать в Finder") { AttachmentActions.reveal(attachment) }
+                            }
+                            .help(attachment.localPath == nil ? "Файл ещё скачивается" : "Открыть — клик, другие действия — правый клик")
+                    }
                 }
                 .padding(.leading, 48)
                 .padding(.top, 6)
@@ -214,27 +249,234 @@ struct MessageCard: View {
         .padding(.bottom, 22)
         .umCard(radius: 14)
     }
+
+    /// «Категория отправителя»: все его письма переезжают, будущие — тоже.
+    @ViewBuilder private var senderMenu: some View {
+        Button("Написать \(message.from.display)") {
+            store.compose(.new)
+            if var request = store.composeQueue.popLast() {
+                request.draft.to = [message.from]
+                store.composeQueue.append(request)
+            }
+        }
+        Button("Скопировать адрес") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(message.from.email, forType: .string)
+        }
+        if !isMine {
+            Divider()
+            Menu("Категория отправителя") {
+                ForEach(InboxCategory.allCases, id: \.self) { category in
+                    Button {
+                        store.setCategory(category, forSenderOf: message.id)
+                    } label: {
+                        if category == message.category {
+                            Label(category.title, systemImage: "checkmark")
+                        } else {
+                            Text(category.title)
+                        }
+                    }
+                }
+            }
+        }
+        if message.role == .sent {
+            Divider()
+            Button("Напомнить, если не ответят") { store.remindIfNoReply(messageID: message.id) }
+        }
+    }
+}
+
+// MARK: - Тело скачивается
+
+@MainActor
+private struct BodyPlaceholder: View {
+    @Environment(MailStore.self) private var store
+    let message: Message
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !message.body.isEmpty {
+                Text(message.body)
+                    .font(.system(size: 13.5))
+                    .lineSpacing(5)
+                    .foregroundStyle(UM.fg2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let error = store.bodyErrors[message.id] {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(UM.orange)
+                    Text(error).font(.system(size: 12)).foregroundStyle(UM.fg2).lineLimit(2)
+                    Spacer(minLength: 6)
+                    Button("Повторить") { store.loadBody(message.id) }
+                        .buttonStyle(UMButtonStyle(kind: .secondary, height: 24, radius: 6, horizontal: 10))
+                }
+                .padding(10)
+                .umInset(radius: 10)
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Загружаю письмо…").font(.system(size: 12)).foregroundStyle(UM.fg3)
+                }
+                .onAppear { store.loadBody(message.id) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 48)
+        .transition(.opacity)
+    }
+}
+
+// MARK: - Запланированное письмо и черновик
+
+@MainActor
+private struct OutboxBar: View {
+    @Environment(MailStore.self) private var store
+    let message: Message
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: message.role == .scheduled ? "calendar.badge.clock" : "pencil.line")
+                .font(.system(size: 14))
+                .foregroundStyle(message.role == .scheduled ? UM.accent : UM.orange)
+            Text(title)
+                .font(.system(size: 12.5, weight: .medium))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if message.role == .scheduled {
+                Button("Изменить") { store.editScheduled(messageID: message.id) }
+                    .buttonStyle(UMButtonStyle(kind: .secondary, height: 26, radius: 7, horizontal: 10))
+                Button("Отправить сейчас") { store.sendScheduledNow(messageID: message.id) }
+                    .buttonStyle(UMButtonStyle(kind: .primary, height: 26, radius: 7, horizontal: 10))
+            } else {
+                Button("Продолжить") { store.compose(.draft, from: message.id) }
+                    .buttonStyle(UMButtonStyle(kind: .primary, height: 26, radius: 7, horizontal: 10))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .umInset(radius: 10)
+    }
+
+    private var title: String {
+        if message.role == .scheduled, let at = message.scheduledAt {
+            return "Отправится " + at.formatted(.dateTime.weekday(.wide).day().month().hour().minute())
+        }
+        return "Черновик"
+    }
+}
+
+// MARK: - Отписка
+
+@MainActor
+private struct UnsubscribeChip: View {
+    @Environment(MailStore.self) private var store
+    let message: Message
+    @State private var state: Phase = .idle
+
+    private enum Phase: Equatable { case idle, working, done(String), failed(String) }
+
+    var body: some View {
+        InfoChip {
+            switch state {
+            case .idle:
+                Text("Рассылка ·")
+                Button("Отписаться") { run() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(UM.accent)
+                    .fontWeight(.medium)
+            case .working:
+                ProgressView().controlSize(.mini)
+                Text("Отписываю…")
+            case .done(let text):
+                Image(systemName: "checkmark").foregroundStyle(UM.green)
+                Text(text)
+            case .failed(let text):
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(UM.orange)
+                Text(text).lineLimit(1)
+            }
+        }
+        .help(helpText)
+        .animation(Motion.snappy, value: state)
+    }
+
+    private var helpText: String {
+        if case .failed(let text) = state { return text }
+        return "Отписаться от рассылки (RFC 8058, письмо или ссылка)"
+    }
+
+    private func run() {
+        state = .working
+        Task {
+            do {
+                let outcome = try await UnsubscribeService.shared.unsubscribe(message, store: store)
+                switch outcome {
+                case .unsubscribed: state = .done("Вы отписались")
+                case .sendEmail: state = .done("Запрос на отписку отправлен")
+                case .openedInBrowser: state = .done("Открыта страница отписки")
+                }
+                try? await Task.sleep(for: .seconds(3))
+                store.markUnsubscribed(messageID: message.id)
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+        }
+    }
+}
+
+// MARK: - Вложения
+
+@MainActor
+enum AttachmentActions {
+    static func open(_ attachment: Attachment) {
+        guard let path = attachment.localPath else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    static func reveal(_ attachment: Attachment) {
+        guard let path = attachment.localPath else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    static func save(_ attachment: Attachment) {
+        guard let path = attachment.localPath else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = attachment.filename
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let target = panel.url else { return }
+        try? FileManager.default.removeItem(at: target)
+        do {
+            try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: target)
+        } catch {
+            ExportService.presentError(error)
+        }
+    }
 }
 
 // MARK: - Приглашение
 
 @MainActor
 private struct InviteBlock: View {
+    @Environment(MailStore.self) private var store
+    let message: Message
     let invite: Invite
-    @State private var answer: String?
+    @State private var working = false
+    @State private var calendarFailed = false
 
     private struct RSVP: Identifiable {
-        var id: String
+        var id: String { status.rawValue }
+        var status: ICSPartStat
         var title: String
         var symbol: String
         var color: Color
     }
 
     private let options = [
-        RSVP(id: "yes", title: "Принять", symbol: "checkmark", color: UM.green),
-        RSVP(id: "maybe", title: "Возможно", symbol: "questionmark", color: UM.orange),
-        RSVP(id: "no", title: "Отклонить", symbol: "xmark", color: UM.red),
+        RSVP(status: .accepted, title: "Принять", symbol: "checkmark", color: UM.green),
+        RSVP(status: .tentative, title: "Возможно", symbol: "questionmark", color: UM.orange),
+        RSVP(status: .declined, title: "Отклонить", symbol: "xmark", color: UM.red),
     ]
+
+    private var answer: String? { invite.response }
 
     private var whenText: String {
         let f = DateFormatter()
@@ -294,8 +536,14 @@ private struct InviteBlock: View {
                 ForEach(options) { option in
                     let on = answer == option.id
                     Button {
-                        // Этап 6: iTIP-ответ организатору + запись в Календарь через EventKit.
-                        withAnimation(Motion.snappy) { answer = on ? nil : option.id }
+                        // Запись в Календарь (EventKit) и iCalendar REPLY организатору.
+                        guard !on, !working else { return }
+                        working = true
+                        Task {
+                            let ok = await store.respondToInvite(messageID: message.id, status: option.status)
+                            calendarFailed = !ok
+                            working = false
+                        }
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: option.symbol).font(.system(size: 12, weight: .semibold))
@@ -305,9 +553,17 @@ private struct InviteBlock: View {
                     }
                     .buttonStyle(UMButtonStyle(kind: .custom(on ? option.color : UM.field, on ? .white : UM.fg),
                                                height: 30, radius: 8))
+                    .disabled(working)
                 }
             }
+            if calendarFailed {
+                Text("Ответ сохранён, но в Календарь добавить не удалось — разрешите доступ в Настройки → Интеграции.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(UM.fg3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+        .animation(Motion.snappy, value: answer)
     }
 }
 

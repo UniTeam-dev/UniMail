@@ -27,8 +27,15 @@ struct SearchQuery {
         }
     }
 
+    /// Условия-операторы без свободного текста (для писем, найденных индексом по телу или сервером).
+    func matchesFilters(_ m: Message) -> Bool {
+        var copy = self
+        copy.terms = []
+        return copy.matches(m)
+    }
+
     func matches(_ m: Message) -> Bool {
-        if hasAttachment && m.attachments.isEmpty { return false }
+        if hasAttachment && !m.hasAttachments { return false }
         if isUnread && m.isRead { return false }
         if isFlagged && !m.isFlagged { return false }
         if let from, !(m.from.email.lowercased().contains(from) || m.from.display.lowercased().contains(from)) { return false }

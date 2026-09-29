@@ -11,8 +11,16 @@ struct SettingsView: View {
                 .tabItem { Label("Внешний вид", systemImage: "paintpalette") }
             BehaviorSettings()
                 .tabItem { Label("Поведение", systemImage: "slider.horizontal.3") }
+            NotificationsSettingsTab()
+                .tabItem { Label("Уведомления", systemImage: "bell.badge") }
+            RulesSettingsTab()
+                .tabItem { Label("Правила", systemImage: "line.3.horizontal.decrease.circle") }
+            TemplatesSettingsTab()
+                .tabItem { Label("Шаблоны", systemImage: "text.badge.plus") }
+            IntegrationsSettingsTab()
+                .tabItem { Label("Интеграции", systemImage: "puzzlepiece.extension") }
         }
-        .frame(width: 620, height: 460)
+        .frame(width: 700, height: 540)
         .background(UM.sheet)
         .foregroundStyle(UM.fg)
         .font(.system(size: 13))
@@ -125,6 +133,20 @@ private struct AccountsSettings: View {
                     .foregroundStyle(UM.fg3)
                     .lineLimit(1)
             }
+            if account.wrappedValue.kind != .demo {
+                GridRow {
+                    label("Серверы")
+                    Text(serverSummary(account.wrappedValue))
+                        .foregroundStyle(UM.fg3)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+                GridRow {
+                    label("Пароль")
+                    PasswordRow(accountID: account.wrappedValue.id)
+                }
+            }
             GridRow {
                 label("Цвет")
                 HStack(spacing: 8) {
@@ -170,6 +192,60 @@ private struct AccountsSettings: View {
             .foregroundStyle(UM.fg2)
             .frame(width: 86, alignment: .trailing)
             .gridColumnAlignment(.trailing)
+    }
+
+    private func serverSummary(_ account: Account) -> String {
+        guard let server = account.server else { return "не заданы" }
+        return "IMAP \(server.imapHost):\(server.imapPort) · SMTP \(server.smtpHost):\(server.smtpPort)"
+    }
+}
+
+/// Новый пароль (пароль приложения) и проверка подключения.
+@MainActor
+private struct PasswordRow: View {
+    @Environment(MailStore.self) private var store
+    let accountID: UUID
+    @State private var secret = ""
+    @State private var checking = false
+    @State private var status: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                SecureField("", text: $secret, prompt: Text("Новый пароль приложения").foregroundColor(UM.fg3))
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(UM.card))
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(UM.cardBorder, lineWidth: 0.5))
+                Button("Сохранить") {
+                    store.updatePassword(secret, for: accountID)
+                    secret = ""
+                    status = "Пароль сохранён в Связке ключей"
+                }
+                .buttonStyle(UMButtonStyle(kind: .secondary, height: 28, radius: 7))
+                .disabled(secret.isEmpty)
+                Button {
+                    checking = true
+                    status = nil
+                    Task {
+                        await store.refresh(accountID: accountID)
+                        checking = false
+                        status = store.accountErrors[accountID] ?? "Подключение работает"
+                    }
+                } label: {
+                    if checking { ProgressView().controlSize(.small) } else { Text("Проверить") }
+                }
+                .buttonStyle(UMButtonStyle(kind: .secondary, height: 28, radius: 7))
+                .disabled(checking)
+            }
+            if let status {
+                Text(status)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(UM.fg3)
+                    .lineLimit(2)
+            }
+        }
     }
 }
 

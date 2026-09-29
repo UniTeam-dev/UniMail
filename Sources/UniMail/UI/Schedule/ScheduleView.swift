@@ -16,7 +16,9 @@ struct ScheduleView: View {
 
     var body: some View {
         @Bindable var store = store
-        let events = store.events(on: day, accountFilter: accountFilter).filter { !store.scheduleHidden.contains($0.accountID) }
+        let mailEvents = store.events(on: day, accountFilter: accountFilter)
+            .filter { $0.accountID.map { !store.scheduleHidden.contains($0) } ?? true }
+        let events = (mailEvents + systemEvents).sorted { $0.start < $1.start }
         let markers = store.markers(on: day, accountFilter: accountFilter).filter { !store.scheduleHidden.contains($0.accountID) }
 
         VStack(spacing: 0) {
@@ -58,6 +60,36 @@ struct ScheduleView: View {
         }
         .background(UM.win)
         .animation(Motion.smooth, value: day)
+        .task {
+            // Встречи берутся из Календаря macOS (Google, Exchange, iCloud подключаются там).
+            CalendarService.shared.refreshAccess()
+            if CalendarService.shared.access == .notDetermined {
+                _ = await CalendarService.shared.requestAccess()
+            }
+        }
+    }
+
+    /// События системного Календаря (EventKit), если доступ открыт. Цвет — цвет календаря.
+    private var calendarItems: [CalendarService.EventItem] {
+        guard CalendarService.shared.access == .granted else { return [] }
+        return CalendarService.shared.events(on: day).filter { !$0.isAllDay }
+    }
+
+    private var systemEvents: [ScheduleEvent] {
+        calendarItems.map { item in
+            ScheduleEvent(
+                id: "ek-\(item.id)", title: item.title,
+                subtitle: "\(RelativeDate.clock(item.start))–\(RelativeDate.clock(item.end)) · \(item.calendarTitle)"
+                    + (item.location.map { " · \($0)" } ?? ""),
+                start: item.start, end: item.end, accountID: nil
+            )
+        }
+    }
+
+    private func eventColor(_ event: ScheduleEvent) -> Color {
+        if let accountID = event.accountID, let account = store.account(accountID) { return account.tint.color }
+        if event.id.hasPrefix("ek-"), let item = calendarItems.first(where: { "ek-\($0.id)" == event.id }) { return item.color }
+        return UM.blue
     }
 
     private func shift(_ days: Int) {
@@ -139,9 +171,8 @@ struct ScheduleView: View {
     }
 
     private func eventBlock(_ event: ScheduleEvent) -> some View {
-        let tint = store.account(event.accountID)?.tint ?? .blue
-        let color = tint.color
-        let tintNS = NSColor(hex: tint.hex)
+        let color = eventColor(event)
+        let tintNS = NSColor(color)
         let height = max(CGFloat(event.end.timeIntervalSince(event.start) / 3600) * hourHeight - 3, 24)
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 7) {

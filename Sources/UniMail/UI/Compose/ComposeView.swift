@@ -12,16 +12,18 @@ struct ComposeView: View {
 
     @State private var draft: OutgoingMessage
     @State private var showCc = false
-    @State private var attachments: [URL] = []
+    @State private var editor = RichTextController()
+    @AppStorage("composeShowsFormatBar") private var showFormatBar = false
     @State private var fromOpen = false
     @State private var sendMenuOpen = false
+    @State private var templatesOpen = false
     @State private var confirmNoAttachment = false
     @State private var scheduleDay: Date = Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
     @State private var scheduleTime = "08:00"
     @State private var calendarMonth = Date.now
     @FocusState private var focus: Field?
 
-    private enum Field { case to, subject, body }
+    private enum Field { case to, subject }
     private let times = ["08:00", "09:30", "13:00", "18:00"]
 
     init(request: ComposeRequest) {
@@ -36,15 +38,20 @@ struct ComposeView: View {
         VStack(spacing: 0) {
             header
             fields.zIndex(2)
+            if showFormatBar {
+                FormatBar(controller: editor)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .zIndex(1)
+            }
             bodyEditor
                 .overlay {
                     // Клик мимо меню закрывает его. Ловушка под полями (zIndex 2), чтобы не перекрывать меню «От».
-                    if fromOpen || sendMenuOpen {
+                    if fromOpen || sendMenuOpen || templatesOpen {
                         Color.black.opacity(0.001)
                             .onTapGesture { closeMenus() }
                     }
                 }
-            if !attachments.isEmpty { attachmentRow }
+            if !draft.attachmentURLs.isEmpty { attachmentRow }
             bottomBar.zIndex(3)
         }
         .background(UM.win)
@@ -61,13 +68,24 @@ struct ComposeView: View {
         }
         .animation(Motion.pop, value: sendMenuOpen)
         .animation(Motion.pop, value: fromOpen)
-        .onAppear { focus = draft.to.isEmpty ? .to : .body }
-        .onChange(of: draft) { _, value in store.saveDraft(value, requestID: request.id) }
+        .animation(Motion.pop, value: templatesOpen)
+        .onAppear { if draft.to.isEmpty { focus = .to } }
+        .onChange(of: draft) { old, value in
+            // HTML пересчитывается из того же текста — сама по себе его смена черновик не меняет.
+            var comparable = old
+            comparable.htmlBody = value.htmlBody
+            guard comparable != value else { return }
+            store.saveDraft(value, requestID: request.id)
+        }
+        .onChange(of: draft.accountID) { oldID, newID in
+            editor.replaceSignature(with: store.account(newID)?.signature ?? "",
+                                    previous: store.account(oldID)?.signature)
+        }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             for provider in providers {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
-                    Task { @MainActor in withAnimation(Motion.bouncy) { attachments.append(url) } }
+                    Task { @MainActor in addAttachments([url]) }
                 }
             }
             return true
@@ -89,9 +107,12 @@ struct ComposeView: View {
                 .lineLimit(1)
             Spacer()
             HStack(spacing: 2) {
-                Button {} label: { Image(systemName: "textformat") }
-                    .buttonStyle(ToolbarIconStyle(width: 30, height: 26, radius: 7))
-                    .help("Форматирование (этап 5)")
+                Button {
+                    withAnimation(Motion.smooth) { showFormatBar.toggle() }
+                } label: { Image(systemName: "textformat") }
+                    .buttonStyle(ToolbarIconStyle(width: 30, height: 26, radius: 7,
+                                                  tint: showFormatBar ? UM.accent : nil, active: showFormatBar))
+                    .help(showFormatBar ? "Скрыть панель форматирования" : "Форматирование")
                 Button { NSApp.keyWindow?.zoom(nil) } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
                     .buttonStyle(ToolbarIconStyle(width: 30, height: 26, radius: 7))
                     .help("Развернуть")
@@ -197,23 +218,26 @@ struct ComposeView: View {
 
     // MARK: Текст и вложения
 
+    /// Форматированный текст. Отступ слева 70 + вставка 7 + padding строки 5 = текст с x = 82, как в макете;
+    /// сверху 18 pt — textContainerInset.
     private var bodyEditor: some View {
-        TextEditor(text: $draft.body)
-            .font(.system(size: 13.5))
-            .lineSpacing(5)
-            .scrollContentBackground(.hidden)
-            .focused($focus, equals: .body)
-            .padding(.top, 18)
-            .padding(.leading, 77)
-            .padding(.trailing, 20)
-            .padding(.bottom, 8)
+        RichTextEditor(
+            plainText: $draft.body,
+            html: $draft.htmlBody,
+            controller: editor,
+            signature: account?.signature ?? "",
+            initialFocus: !draft.to.isEmpty,
+            onFileDrop: { urls in addAttachments(urls) }
+        )
+        .padding(.leading, 70)
+        .padding(.trailing, 8)
     }
 
     private var attachmentRow: some View {
         FlowLayout(spacing: 8) {
-            ForEach(attachments, id: \.self) { url in
+            ForEach(draft.attachmentURLs, id: \.self) { url in
                 AttachmentChip(attachment: attachment(for: url), removable: true) {
-                    withAnimation(Motion.bouncy) { attachments.removeAll { $0 == url } }
+                    withAnimation(Motion.bouncy) { draft.attachmentURLs.removeAll { $0 == url } }
                 }
                 .transition(.scale.combined(with: .opacity))
             }
@@ -243,6 +267,31 @@ struct ComposeView: View {
                 .font(.system(size: 12.5, weight: .medium))
             }
             .buttonStyle(UMButtonStyle(kind: .secondary, height: 30, radius: 8, horizontal: 11))
+
+            Button {
+                withAnimation(Motion.pop) {
+                    fromOpen = false
+                    sendMenuOpen = false
+                    templatesOpen.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text").font(.system(size: 13))
+                    Text("Шаблоны")
+                }
+                .font(.system(size: 12.5, weight: .medium))
+            }
+            .buttonStyle(UMButtonStyle(kind: .secondary, height: 30, radius: 8, horizontal: 11))
+            .overlay(alignment: .bottomLeading) {
+                if templatesOpen {
+                    templatesMenu
+                        .fixedSize()
+                        .offset(y: -49) // низ меню на 6 pt выше панели (кнопка 30 pt по центру панели 56 pt)
+                        .transition(Motion.reduce ? AnyTransition.opacity
+                                    : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottomLeading)))
+                }
+            }
+            .zIndex(1)
 
             Button { draft.sendSeparately.toggle() } label: {
                 HStack(spacing: 8) {
@@ -401,6 +450,36 @@ struct ComposeView: View {
         }
     }
 
+    // MARK: Шаблоны
+
+    private var templatesMenu: some View {
+        let templates = AutomationStore.shared.templates
+        return VStack(spacing: 0) {
+            if templates.isEmpty {
+                Text("Шаблонов пока нет")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(UM.fg3)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+            } else {
+                ForEach(templates) { template in
+                    MenuRow(symbol: "doc.text", title: template.name) { insertTemplate(template) }
+                }
+            }
+        }
+        .padding(5)
+        .frame(width: 260)
+        .umMenuSurface(radius: 11)
+    }
+
+    private func insertTemplate(_ template: MailTemplate) {
+        withAnimation(Motion.pop) { templatesOpen = false }
+        if draft.subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !template.subject.isEmpty {
+            draft.subject = template.subject
+        }
+        editor.insertTemplate(template.body)
+    }
+
     private func shiftMonth(_ delta: Int) {
         calendarMonth = Calendar.current.date(byAdding: .month, value: delta, to: calendarMonth) ?? calendarMonth
     }
@@ -411,6 +490,7 @@ struct ComposeView: View {
         withAnimation(Motion.pop) {
             fromOpen = false
             sendMenuOpen = false
+            templatesOpen = false
         }
     }
 
@@ -419,14 +499,26 @@ struct ComposeView: View {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         if panel.runModal() == .OK {
-            withAnimation(Motion.bouncy) { attachments.append(contentsOf: panel.urls) }
+            addAttachments(panel.urls)
         }
+    }
+
+    /// Добавляет файлы во вложения черновика (без повторов и папок).
+    private func addAttachments(_ urls: [URL]) {
+        var added: [URL] = []
+        for url in urls where url.isFileURL {
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+            guard !isDirectory, !draft.attachmentURLs.contains(url), !added.contains(url) else { continue }
+            added.append(url)
+        }
+        guard !added.isEmpty else { return }
+        withAnimation(Motion.bouncy) { draft.attachmentURLs.append(contentsOf: added) }
     }
 
     private func attemptSend() {
         guard !draft.to.isEmpty else { return }
         let mentions = ["вложен", "прикреп", "attach"].contains { draft.body.lowercased().contains($0) }
-        if mentions && attachments.isEmpty {
+        if mentions && draft.attachmentURLs.isEmpty {
             confirmNoAttachment = true
         } else {
             send()

@@ -74,6 +74,11 @@ struct MessageListColumn: View {
                             EmptyListState()
                                 .transition(.opacity)
                         }
+                        if !store.searchText.isEmpty && store.canSearchServer {
+                            ServerSearchFooter()
+                                .padding(.horizontal, 18)
+                                .padding(.top, 10)
+                        }
                     }
                     .padding(.bottom, 12)
                     .animation(Motion.list, value: threads.map(\.id))
@@ -371,5 +376,44 @@ struct ThreadContextMenu: View {
             Button("Это спам", systemImage: "exclamationmark.octagon") { store.markSpam(threadIDs: [threadID]) }
             Button("Удалить", systemImage: "trash", role: .destructive) { store.trash(threadIDs: [threadID]) }
         }
+    }
+}
+
+// MARK: - Поиск на сервере
+
+/// Под результатами: письма старше локальной истории ищутся на сервере (IMAP SEARCH / X-GM-RAW).
+@MainActor
+private struct ServerSearchFooter: View {
+    @Environment(MailStore.self) private var store
+
+    var body: some View {
+        HStack(spacing: 8) {
+            switch store.serverSearchState {
+            case .idle:
+                Button {
+                    store.searchOnServer()
+                } label: {
+                    Label("Искать на сервере", systemImage: "icloud.and.arrow.down")
+                }
+                .buttonStyle(UMButtonStyle(kind: .secondary, height: 28, radius: 8, horizontal: 12))
+            case .searching:
+                ProgressView().controlSize(.small)
+                Text("Ищу на сервере…").foregroundStyle(UM.fg3)
+            case .done(let found):
+                Image(systemName: "checkmark.circle").foregroundStyle(UM.green)
+                Text(found == 0 ? "На сервере ничего больше нет"
+                     : "С сервера: \(found) \(plural(found, "тред", "треда", "тредов"))")
+                    .foregroundStyle(UM.fg3)
+            case .failed(let text):
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(UM.orange)
+                Text(text).foregroundStyle(UM.fg3).lineLimit(2)
+                Button("Повторить") { store.searchOnServer() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(UM.accent)
+            }
+        }
+        .font(.system(size: 12))
+        .frame(maxWidth: .infinity)
+        .animation(Motion.snappy, value: store.serverSearchState)
     }
 }

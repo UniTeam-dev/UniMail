@@ -131,6 +131,21 @@ struct ReaderColumn: View {
                 Button("Ответить в отдельном окне", systemImage: "macwindow") {
                     if let last { store.compose(.reply, from: last.id) }
                 }
+                if let threadID, store.isAwaitingReply(threadID: threadID) {
+                    Button("Снять напоминание «нет ответа»", systemImage: "bell.slash") {
+                        store.dismissFollowUp(threadID: threadID)
+                    }
+                }
+                Divider()
+                Button("Экспорт в PDF…", systemImage: "doc.richtext") {
+                    if let threadID { ExportService.shared.exportThreadToPDF(threadID: threadID, store: store) }
+                }
+                Button("Напечатать…", systemImage: "printer") {
+                    if let threadID { ExportService.shared.printThread(threadID: threadID, store: store) }
+                }
+                Button("Сохранить как .eml…", systemImage: "square.and.arrow.down") {
+                    if let threadID { ExportService.shared.saveThreadMessageAsEML(threadID: threadID, store: store) }
+                }
             } label: {
                 Image(systemName: "ellipsis")
             }

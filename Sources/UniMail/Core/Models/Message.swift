@@ -74,6 +74,12 @@ struct Attachment: Identifiable, Codable, Hashable, Sendable {
     var filename: String
     var size: Int
     var mimeType: String
+    /// Номер MIME-части на сервере (IMAP BODY[1.2]) — для ленивой загрузки.
+    var partID: String?
+    /// Content-ID для встроенных картинок (cid:).
+    var contentID: String?
+    /// Путь к скачанному файлу в кэше.
+    var localPath: String?
 
     enum Kind { case pdf, design, image, table, slides, archive, document }
 
@@ -118,6 +124,11 @@ struct Invite: Codable, Hashable, Sendable {
     var start: Date
     var end: Date
     var location: String
+    /// Организатор и исходный iCalendar — чтобы ответить (METHOD:REPLY).
+    var organizer: Address?
+    var ics: String?
+    /// Ответ, который мы уже отправили: ACCEPTED / TENTATIVE / DECLINED.
+    var response: String?
 }
 
 struct Message: Identifiable, Codable, Hashable, Sendable {
@@ -141,6 +152,31 @@ struct Message: Identifiable, Codable, Hashable, Sendable {
     var invite: Invite?
     /// Одноразовый код, если провайдер или разбор письма его нашёл.
     var oneTimeCode: String?
+
+    // MARK: Поля синхронизации (для демо — nil)
+
+    /// Имя папки на сервере и UID внутри неё.
+    var folder: String?
+    var uid: UInt32?
+    /// Заголовки для тредов и ответов.
+    var headerMessageID: String?
+    var inReplyToHeader: String?
+    var references: [String]?
+    /// List-Unsubscribe (mailto: или https:) и поддержка one-click (RFC 8058).
+    var listUnsubscribe: String?
+    var listUnsubscribePost: Bool?
+    /// Метки Gmail (X-GM-LABELS).
+    var labels: [String]?
+    /// Тело ещё не скачано — только заголовки и превью.
+    var bodyPending: Bool?
+    /// Ждём ответа на это исходящее письмо до указанной даты (follow-up).
+    var followUpAt: Date?
+    /// Входящее вернулось из follow-up: «Нет ответа».
+    var noReplyNotice: Bool?
+    /// Есть вложения (известно по BODYSTRUCTURE до скачивания тела).
+    var attachmentHint: Bool?
+
+    var hasAttachments: Bool { !attachments.isEmpty || attachmentHint == true }
 
     var hasInvite: Bool { invite != nil }
 
@@ -184,8 +220,17 @@ struct OutgoingMessage: Codable, Hashable, Sendable {
     var sendAt: Date?
     /// Отправить каждому получателю отдельное письмо.
     var sendSeparately: Bool = false
-    /// Напомнить, если на письмо не ответят (этап 7).
+    /// Напомнить, если на письмо не ответят.
     var remindIfNoReply: Bool = false
+    /// Текст в HTML, если письмо писали с форматированием.
+    var htmlBody: String?
+    /// Вложенные файлы.
+    var attachmentURLs: [URL] = []
+    /// Заголовки для треда на сервере (заполняет MailStore перед отправкой).
+    var inReplyToHeader: String?
+    var referenceHeaders: [String]?
+    /// Ответ на приглашение: iCalendar METHOD:REPLY.
+    var calendarReply: String?
 }
 
 /// Склонение: 1 письмо, 2 письма, 5 писем.

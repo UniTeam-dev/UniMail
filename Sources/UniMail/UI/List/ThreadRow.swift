@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Строка треда: точка «не прочитано», аватар с меткой аккаунта, имя, счётчик, скрепка, флаг, время,
@@ -65,6 +66,15 @@ struct ThreadRow: View {
                             .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(UM.seg))
                     }
                     Spacer(minLength: 4)
+                    if thread.latest.role == .sent && thread.latest.noReplyNotice == true {
+                        Text("Нет ответа")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(UM.orange)
+                            .padding(.horizontal, 6)
+                            .frame(height: 16)
+                            .background(Capsule().fill(UM.orange.opacity(0.14)))
+                            .transition(.scale.combined(with: .opacity))
+                    }
                     if thread.hasAttachments {
                         Image(systemName: "paperclip").font(.system(size: 11)).foregroundStyle(UM.fg3)
                     }
@@ -130,7 +140,8 @@ struct ThreadRow: View {
     }
 }
 
-/// Свайп строки: вправо — зелёный «Архив», влево — оранжевый «Отложить».
+/// Свайп строки: вправо — зелёный «Архив», влево — оранжевый «Отложить» (завтра в 08:00).
+/// Работает перетаскиванием мышью и двумя пальцами по трекпаду без нажатия (TrackpadSwipe.swift).
 @MainActor
 struct SwipeableRow<Content: View>: View {
     @Environment(MailStore.self) private var store
@@ -138,6 +149,10 @@ struct SwipeableRow<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @State var offset: CGFloat = 0
+    /// Порог пройден — отпускание выполнит действие.
+    @State var armed = false
+    /// Строка улетает — новые жесты игнорируются.
+    @State var committing = false
     let threshold: CGFloat = 90
 
     var body: some View {
@@ -159,31 +174,74 @@ struct SwipeableRow<Content: View>: View {
                 .offset(x: offset)
         }
         .clipped()
+        .background {
+            TrackpadSwipeCatcher(
+                isEnabled: !committing,
+                onChanged: { translation in track(translation) },
+                onEnded: { translation, velocity in finish(translation: translation, velocity: velocity) }
+            )
+        }
         .gesture(
             DragGesture(minimumDistance: 14)
                 .onChanged { value in
-                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                    offset = value.translation.width
+                    guard !committing, abs(value.translation.width) > abs(value.translation.height) else { return }
+                    track(value.translation.width)
                 }
                 .onEnded { value in
-                    let width = value.translation.width
-                    if abs(width) > threshold {
-                        // Строка улетает за край, затем уходит из списка.
-                        withAnimation(Motion.list) { offset = width > 0 ? 400 : -400 }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                            if width > 0 {
-                                store.archive(threadIDs: [threadID])
-                            } else {
-                                let preset = TimePreset.tomorrowMorning
-                                store.snooze(threadIDs: [threadID], until: preset.date, label: preset.title)
-                            }
-                            offset = 0
-                        }
-                    } else {
-                        withAnimation(Motion.release) { offset = 0 }
-                    }
+                    guard !committing else { return }
+                    // Если горизонтальный свайп так и не начался, строка не сдвигалась.
+                    finish(translation: offset == 0 ? 0 : value.translation.width, velocity: value.velocity.width)
                 }
         )
+    }
+
+    /// Смещение строки за пальцами/курсором: до порога — 1:1, дальше — с сопротивлением.
+    private func track(_ translation: CGFloat) {
+        guard !committing else { return }
+        let nowArmed = abs(translation) > threshold
+        if nowArmed != armed {
+            armed = nowArmed
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+        offset = rubberBand(translation)
+    }
+
+    private func rubberBand(_ translation: CGFloat) -> CGFloat {
+        let magnitude = abs(translation)
+        guard magnitude > threshold else { return translation }
+        let limit: CGFloat = 110
+        let over = magnitude - threshold
+        let eased = limit * (1 - 1 / (over / limit + 1))
+        return (threshold + eased) * (translation < 0 ? -1 : 1)
+    }
+
+    /// Отпускание: за порогом (или быстрым броском) — действие, иначе строка пружинит назад.
+    private func finish(translation: CGFloat, velocity: CGFloat) {
+        guard !committing else { return }
+        let wasArmed = armed
+        armed = false
+        let flung = abs(velocity) > 700 && abs(translation) > 36 && (velocity > 0) == (translation > 0)
+        guard abs(translation) > threshold || flung else {
+            withAnimation(Motion.release) { offset = 0 }
+            return
+        }
+        if !wasArmed {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+        let archive = translation > 0
+        committing = true
+        // Строка улетает за край, затем уходит из списка.
+        withAnimation(Motion.list) { offset = archive ? 400 : -400 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            if archive {
+                store.archive(threadIDs: [threadID])
+            } else {
+                let preset = TimePreset.tomorrowMorning
+                store.snooze(threadIDs: [threadID], until: preset.date, label: preset.title)
+            }
+            offset = 0
+            committing = false
+        }
     }
 
     private func swipeBackground(color: Color, symbol: String, title: String, leading: Bool) -> some View {

@@ -12,13 +12,34 @@ enum EWSEndpoint {
 }
 
 #if canImport(Darwin)
-/// HTTPS до EWS. Вход — тем способом, который предложит сервер: Basic, NTLM или Kerberos (Negotiate);
-/// URLSession делает рукопожатие сама, мы только отдаём логин и пароль.
+/// HTTPS до EWS.
+///
+/// Вход: сначала Basic с заголовком в самом запросе (работает и по HTTP/2, где NTLM у IIS ломается),
+/// если сервер его не принял — NTLM через URLSession. Kerberos не пробуем: паролем он почти никогда
+/// не проходит, а лишняя неудачная попытка приближает блокировку учётки в AD.
+/// Сработавший способ запоминается; при отказе обоих — ошибка с отчётом, что пробовали.
 final class EWSHTTPTransport: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    enum Method: String { case basic = "Basic", ntlm = "NTLM" }
+
     private let url: URL
     private let username: String
     private let password: String
-    private lazy var session: URLSession = {
+    private let lock = NSLock()
+    private var working: Method?
+    /// Сервер уже отказал с этим паролем — больше не стучимся (иначе опрос раз в минуту заблокирует учётку в AD).
+    /// Сбрасывается новым паролем: MailStore пересоздаёт транспорт.
+    private var rejected: String?
+
+    /// Basic: без делегата и хранилища паролей — на 401 URLSession просто вернёт ответ.
+    private lazy var basicSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 90
+        configuration.urlCredentialStorage = nil
+        return URLSession(configuration: configuration)
+    }()
+
+    /// NTLM: рукопожатие делает URLSession, делегат отдаёт логин и пароль.
+    private lazy var ntlmSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 90
         configuration.httpCookieAcceptPolicy = .always
@@ -33,61 +54,75 @@ final class EWSHTTPTransport: NSObject, URLSessionTaskDelegate, @unchecked Senda
     }
 
     func post(_ body: Data) async throws -> (status: Int, body: Data) {
+        if let rejected = lock.withLock({ rejected }) { throw EWSError.unauthorized(rejected) }
+        let known = lock.withLock { working }
+        switch known {
+        case .basic:
+            return try await send(body, method: .basic)
+        case .ntlm:
+            return try await send(body, method: .ntlm)
+        case nil:
+            var report: [String] = []
+            for method in [Method.basic, .ntlm] {
+                let result = try await send(body, method: method)
+                if result.status != 401 {
+                    if (200..<300).contains(result.status) { lock.withLock { working = method } }
+                    return result
+                }
+                report.append("\(method.rawValue) → 401")
+            }
+            let detail = report.joined(separator: ", ") + " (логин «\(username)»)"
+            lock.withLock { rejected = detail }
+            throw EWSError.unauthorized(detail)
+        }
+    }
+
+    private func send(_ body: Data, method: Method) async throws -> (status: Int, body: Data) {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = body
         request.setValue("text/xml; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.setValue("UniMail/1.0 (macOS)", forHTTPHeaderField: "User-Agent")
+        if method == .basic {
+            let token = Data("\(username):\(password)".utf8).base64EncodedString()
+            request.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
+        }
         do {
+            let session = method == .basic ? basicSession : ntlmSession
             let (data, response) = try await session.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if (200..<300).contains(status) {
-                lock.withLock { if workingMethod == nil { workingMethod = offeredMethod } }
-            }
-            return (status, data)
+            return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
         } catch {
             let ns = error as NSError
             if ns.domain == NSURLErrorDomain
                 && (ns.code == NSURLErrorUserCancelledAuthentication || ns.code == NSURLErrorCancelled) {
-                throw EWSError.unauthorized
+                return (401, Data())
             }
             throw MailProviderError.network("EWS \(url.host ?? "") — \(error.localizedDescription)")
         }
     }
 
-    /// Способ входа, который уже сработал (Negotiate/NTLM/Basic): следующие запросы сразу идут им.
-    private var workingMethod: String?
-    /// Способ, которым отвечали на последний вызов — если запрос пройдёт, он станет рабочим.
-    private var offeredMethod: String?
-    private let lock = NSLock()
-
-    private static let passwordMethods: Set<String> = [
-        NSURLAuthenticationMethodNegotiate, NSURLAuthenticationMethodNTLM,
-        NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodDefault,
-    ]
-
-    /// Exchange предлагает сразу несколько способов (Negotiate, NTLM, Basic). URLSession начинает с Kerberos —
-    /// если он не прошёл, отказываемся от этого способа (rejectProtectionSpace) и пробуем следующий,
-    /// а не обрываем запрос. Каждый способ — одна попытка: неверный пароль не крутится по кругу.
+    /// Только NTLM и одна попытка: Negotiate и Basic в этой сессии отклоняем, чтобы URLSession перешла к NTLM.
     func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         let method = challenge.protectionSpace.authenticationMethod
-        guard Self.passwordMethods.contains(method) else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-        let preferred = lock.withLock { workingMethod }
-        if challenge.previousFailureCount > 0 || (preferred != nil && preferred != method) {
-            if preferred == method { lock.withLock { workingMethod = nil } }
+        switch method {
+        case NSURLAuthenticationMethodNTLM:
+            if challenge.previousFailureCount > 0 {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+            } else {
+                completionHandler(.useCredential, URLCredential(user: username, password: password, persistence: .forSession))
+            }
+        case NSURLAuthenticationMethodNegotiate, NSURLAuthenticationMethodHTTPBasic,
+             NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodDefault:
             completionHandler(.rejectProtectionSpace, nil)
-            return
+        default:
+            completionHandler(.performDefaultHandling, nil)
         }
-        lock.withLock { offeredMethod = method }
-        completionHandler(.useCredential, URLCredential(user: username, password: password, persistence: .forSession))
     }
 
     func close() {
-        session.invalidateAndCancel()
+        basicSession.invalidateAndCancel()
+        ntlmSession.invalidateAndCancel()
     }
 }
 #endif

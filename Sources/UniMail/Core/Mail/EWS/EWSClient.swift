@@ -5,7 +5,8 @@ import Foundation
 typealias EWSPost = @Sendable (_ body: Data) async throws -> (status: Int, body: Data)
 
 enum EWSError: LocalizedError, Equatable {
-    case unauthorized
+    /// Вход не принят; в тексте — какие способы пробовали.
+    case unauthorized(String)
     case http(Int)
     case fault(String)
     case response(code: String, message: String)
@@ -13,7 +14,7 @@ enum EWSError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unauthorized: "Exchange не принял логин или пароль. Попробуйте логин в виде ДОМЕН\\имя (как при входе в Windows) или полный адрес почты."
+        case .unauthorized(let detail): "Exchange не принял логин или пароль (\(detail))."
         case .http(let code): "Сервер Exchange ответил HTTP \(code)."
         case .fault(let text): "Ошибка Exchange: \(text)"
         case .response(let code, let message): message.isEmpty ? "Ошибка Exchange: \(code)" : "Ошибка Exchange (\(code)): \(message)"
@@ -97,7 +98,7 @@ struct EWSClient: Sendable {
     /// Выполнить запрос и вернуть элемент `Body` ответа.
     func call(_ body: String) async throws -> XNode {
         let (status, data) = try await post(Data(Self.envelope(body).utf8))
-        if status == 401 || status == 403 { throw EWSError.unauthorized }
+        if status == 401 || status == 403 { throw EWSError.unauthorized("HTTP \(status)") }
         let root = XMLTree.parse(data)
         if let fault = root?.firstDescendant("Fault") {
             let text = fault.value("faultstring") ?? fault.firstDescendant("Message")?.text ?? "SOAP Fault"

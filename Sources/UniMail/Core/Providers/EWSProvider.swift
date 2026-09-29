@@ -319,9 +319,9 @@ actor EWSProvider: MailProvider {
     private func mapped<T>(_ body: () async throws -> T) async throws -> T {
         do {
             return try await body()
-        } catch EWSError.unauthorized {
+        } catch EWSError.unauthorized(let detail) {
             let host = account.exchange.flatMap { EWSEndpoint.url(for: $0.server)?.host } ?? "сервер"
-            throw MailProviderError.loginRejected(server: "Exchange \(host)", details: "401 — вход не выполнен")
+            throw MailProviderError.loginRejected(server: "Exchange \(host)", details: detail)
         }
     }
 }

@@ -112,6 +112,32 @@ struct ServerSettings: Codable, Hashable, Sendable {
     var username: String
     var imapSecurity: ConnectionSecurity? = .tls
     var smtpSecurity: ConnectionSecurity? = .tls
+
+    /// Стандартные порты однозначны: 993/465 — сразу TLS, 143/587/25 — STARTTLS.
+    /// Выбор в настройках учитывается только для нестандартных портов (частая ошибка — «993 + STARTTLS»).
+    var resolvedIMAPSecurity: ConnectionSecurity {
+        switch imapPort {
+        case 993: .tls
+        case 143: .starttls
+        default: imapSecurity ?? .tls
+        }
+    }
+
+    var resolvedSMTPSecurity: ConnectionSecurity {
+        switch smtpPort {
+        case 465: .tls
+        case 587, 25: .starttls
+        default: smtpSecurity ?? .tls
+        }
+    }
+}
+
+/// Exchange по EWS (как у Outlook для Mac): сервер и логин. Пароль — в Связке ключей.
+struct ExchangeSettings: Codable, Hashable, Sendable {
+    /// Имя сервера (mail.company.ru) или полный адрес EWS (https://…/EWS/Exchange.asmx).
+    var server: String
+    /// DOMAIN\user или адрес почты. Пусто — адрес почты.
+    var username: String = ""
 }
 
 struct Account: Identifiable, Codable, Hashable, Sendable {
@@ -122,6 +148,8 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     var kind: ProviderKind
     var tint: AccountTint
     var server: ServerSettings?
+    /// Задан — ящик работает через Exchange Web Services вместо IMAP/SMTP.
+    var exchange: ExchangeSettings?
     /// Старое поле: одна подпись строкой. Переносится в `signatures` при загрузке.
     var signature: String = ""
     /// Подписи ящика и какие из них подставлять автоматически.

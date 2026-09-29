@@ -4,3 +4,4 @@ dist/
 .rebuild.log
 .DS_Store
 *.xcodeproj/xcuserdata/
+.netcheck.log

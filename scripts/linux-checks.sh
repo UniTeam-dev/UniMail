@@ -29,6 +29,7 @@ run database   $DB $M/Models/*.swift $M/Store/Database/*.swift Tests/LinuxChecks
 run automation $M/Models/*.swift $M/Automation/*.swift Tests/LinuxChecks/Automation/main.swift
 run richtext   Sources/UniMail/UI/Compose/RichTextModel.swift Tests/LinuxChecks/RichText/main.swift
 run provider   $DB $M/Models/*.swift $M/Mail/*.swift $M/Mail/*/*.swift $M/Store/Database/*.swift $M/Providers/*.swift $M/Render/*.swift Tests/LinuxChecks/Provider/*.swift
+run ews        $DB $M/Models/*.swift $M/Mail/*.swift $M/Mail/*/*.swift $M/Store/Database/*.swift $M/Providers/*.swift $M/Render/*.swift Tests/LinuxChecks/EWS/main.swift
 run store      $DB $M/Models/*.swift $M/Mail/*.swift $M/Mail/*/*.swift $M/Store/Database/*.swift $M/Providers/*.swift $M/Render/*.swift \
                $M/Automation/*.swift $M/Store/*.swift Tests/LinuxChecks/Provider/FakeServers.swift Tests/LinuxChecks/Store/*.swift
 

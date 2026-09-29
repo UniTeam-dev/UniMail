@@ -59,6 +59,8 @@ enum MailProviderError: LocalizedError {
     case missingServerSettings
     case missingPassword
     case notFound
+    /// Сервер отказал во входе: его ответ и подсказка, где включить доступ.
+    case loginRejected(server: String, details: String)
 
     var errorDescription: String? {
         switch self {
@@ -67,14 +69,36 @@ enum MailProviderError: LocalizedError {
         case .authenticationFailed:
             "Не удалось войти. Проверьте логин и пароль."
         case .network(let details):
-            "Нет связи с сервером: \(details)"
+            "Не удаётся подключиться: \(details). Проверьте адрес сервера, порт и защиту — или что этот протокол включён на сервере."
         case .missingServerSettings:
             "Не заданы серверы IMAP и SMTP."
         case .missingPassword:
             "Нет пароля в Связке ключей — введите его заново в настройках аккаунта."
         case .notFound:
             "Письмо не найдено на сервере."
+        case let .loginRejected(server, details):
+            "\(server) не принял логин или пароль (ответ сервера: «\(details)»). " + Self.loginHint(for: server)
         }
+    }
+}
+
+extension MailProviderError {
+    /// Где у почтового сервиса включается вход для почтовых программ.
+    static func loginHint(for server: String) -> String {
+        let host = server.lowercased()
+        if host.contains("yandex") {
+            return "Яндекс: в Почте откройте «Все настройки → Почтовые программы», включите доступ по IMAP и «Портальный пароль», затем создайте пароль приложения для почты (id.yandex.ru → Безопасность → Пароли приложений) и введите его вместо обычного пароля."
+        }
+        if host.contains("gmail") || host.contains("google") {
+            return "Gmail: нужен пароль приложения из 16 букв (myaccount.google.com/apppasswords), он появляется после включения двухэтапной аутентификации. Обычный пароль Google не подойдёт."
+        }
+        if host.contains("mail.ru") {
+            return "Mail.ru: создайте «Пароль для внешнего приложения» (Настройки → Безопасность) и введите его."
+        }
+        if host.contains("me.com") || host.contains("icloud") {
+            return "iCloud: нужен пароль приложения (account.apple.com → Вход и безопасность → Пароли приложений)."
+        }
+        return "Проверьте логин (иногда это полный адрес, иногда только имя) и пароль; у многих сервисов нужен отдельный пароль приложения."
     }
 }
 
@@ -164,6 +188,17 @@ enum ProviderFactory {
         case .demo:
             return DemoProvider(account: account)
         case .gmail, .outlook, .icloud, .imap:
+            #if canImport(Darwin)
+            if let exchange = account.exchange, let url = EWSEndpoint.url(for: exchange.server),
+               let database = database ?? (try? MailDatabase.inMemory()) {
+                let secret = password ?? Keychain.get(account.id.uuidString) ?? ""
+                let user = exchange.username.trimmingCharacters(in: .whitespaces).isEmpty ? account.email : exchange.username
+                let transport = EWSHTTPTransport(url: url, username: user, password: secret)
+                return EWSProvider(account: account, database: database,
+                                   post: { try await transport.post($0) },
+                                   cacheDirectory: attachmentsDirectory)
+            }
+            #endif
             guard account.server != nil, let database = database ?? (try? MailDatabase.inMemory()) else {
                 return PendingProvider(accountID: account.id, kind: account.kind)
             }

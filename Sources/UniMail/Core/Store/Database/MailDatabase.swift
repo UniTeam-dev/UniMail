@@ -282,6 +282,15 @@ final class MailDatabase: @unchecked Sendable {
         }
     }
 
+    /// Письма одной папки аккаунта (EWS: сверка с сервером без UID).
+    func messages(accountID: UUID, folder: String) throws -> [Message] {
+        try queue.sync {
+            let rows = try db.query("SELECT data FROM messages WHERE account_id = ? AND folder = ?",
+                                    [.text(accountID.uuidString), .text(folder)]) { $0.blob(0) }
+            return rows.compactMap { $0.flatMap { try? decoder.decode(Message.self, from: $0) } }
+        }
+    }
+
     /// Письма по списку id (для обновления флагов после синхронизации).
     func messages(ids: [String]) throws -> [Message] {
         guard !ids.isEmpty else { return [] }

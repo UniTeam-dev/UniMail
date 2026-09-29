@@ -552,7 +552,7 @@ final class MailStore {
         let before = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for account in accounts {
             guard let previous = before[account.id], providers[account.id] != nil else { continue }
-            if previous.server != account.server || previous.email != account.email
+            if previous.server != account.server || previous.exchange != account.exchange || previous.email != account.email
                 || previous.senderName != account.senderName || previous.kind != account.kind {
                 reconnect(account)
             }
@@ -977,7 +977,7 @@ final class MailStore {
         // Локальные письма (черновики, запланированные, копии отправленных) на сервер не уходят.
         var action = action
         if provider.isLive {
-            let serverIDs = action.ids.filter { IMAPProvider.location(of: $0) != nil && !$0.contains("|local-sent|") }
+            let serverIDs = action.ids.filter(Self.isServerMessageID)
             guard !serverIDs.isEmpty else { return }
             action = action.withIDs(serverIDs)
         }
@@ -1021,6 +1021,11 @@ final class MailStore {
                 if Self.isRetryable(error) { return }
             }
         }
+    }
+
+    /// Письмо лежит на сервере (IMAP или Exchange), а не только здесь (черновик, запланированное, копия отправленного).
+    static func isServerMessageID(_ id: String) -> Bool {
+        (IMAPProvider.location(of: id) != nil || EWSProvider.location(of: id) != nil) && !id.contains("|local-sent|")
     }
 
     private static func isRetryable(_ error: Error) -> Bool {

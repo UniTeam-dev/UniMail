@@ -45,12 +45,13 @@ actor IMAPProvider: MailProvider {
     private func connect(readTimeout: TimeInterval) async throws -> IMAPClient {
         guard !server.imapHost.isEmpty else { throw MailProviderError.missingServerSettings }
         guard let password = password(), !password.isEmpty else { throw MailProviderError.missingPassword }
-        let security = server.imapSecurity ?? (server.imapPort == 143 ? .starttls : .tls)
+        let security = server.resolvedIMAPSecurity
         let transport: MailTransport
+        let place = "IMAP \(server.imapHost):\(server.imapPort)"
         do {
             transport = try await transportFactory(server.imapHost, server.imapPort, security == .tls, readTimeout)
         } catch {
-            throw MailProviderError.network(error.localizedDescription)
+            throw MailProviderError.network("\(place) — \(error.localizedDescription)")
         }
         let client = IMAPClient(transport: transport)
         do {
@@ -60,11 +61,13 @@ actor IMAPProvider: MailProvider {
             try? await client.enableCondStore()
         } catch let error as IMAPError {
             transport.close()
-            if case .authenticationFailed = error { throw MailProviderError.authenticationFailed }
+            if case .authenticationFailed(let text) = error {
+                throw MailProviderError.loginRejected(server: server.imapHost, details: text)
+            }
             throw error
         } catch {
             transport.close()
-            throw MailProviderError.network(error.localizedDescription)
+            throw MailProviderError.network("\(place) — \(error.localizedDescription)")
         }
         return client
     }
@@ -352,53 +355,11 @@ actor IMAPProvider: MailProvider {
         return content(from: MIMEParser.parse(raw), messageID: message.id)
     }
 
-    /// Разбор MIME → содержимое для экрана чтения. Вложения сохраняются в кэш, встроенные картинки
-    /// подставляются в HTML как data:-URI (WKWebView с CSP не ходит за cid: и file:).
     func content(from parsed: ParsedMessage, messageID: String) -> MessageContent {
-        let folder = cacheDirectory
-            .appendingPathComponent(accountID.uuidString, isDirectory: true)
-            .appendingPathComponent(Self.safeFileName(messageID), isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-
-        var html = parsed.htmlBody
-        var attachments: [Attachment] = []
-        for part in parsed.attachments {
-            if part.isInline, let cid = part.contentID, var current = html, part.data.count < 3_000_000,
-               part.mimeType.lowercased().hasPrefix("image/") {
-                let uri = "data:\(part.mimeType);base64,\(part.data.base64EncodedString())"
-                current = current.replacingOccurrences(of: "cid:\(cid)", with: uri)
-                html = current
-                continue
-            }
-            let name = part.filename.isEmpty ? "вложение-\(part.partID)" : part.filename
-            let url = folder.appendingPathComponent(Self.safeFileName(name))
-            try? part.data.write(to: url, options: .atomic)
-            attachments.append(Attachment(
-                filename: name, size: part.data.count, mimeType: part.mimeType,
-                partID: part.partID, contentID: part.contentID, localPath: url.path
-            ))
-        }
-
-        var invite: Invite?
-        if let ics = parsed.calendar, let event = ICSParser.parse(ics).first,
-           (event.method ?? "REQUEST").uppercased() != "CANCEL" {
-            invite = Invite(title: event.summary, start: event.start, end: event.end,
-                            location: event.location ?? "", organizer: event.organizer, ics: ics)
-        }
-
-        let text = parsed.textBody ?? html.map { MailFTS.plainText(fromHTML: $0) }
-        return MessageContent(
-            text: text, html: html, attachments: attachments, invite: invite,
-            listUnsubscribe: parsed.listUnsubscribe, listUnsubscribePost: parsed.listUnsubscribePost,
-            references: parsed.references, inReplyTo: parsed.inReplyTo, messageID: parsed.messageID
-        )
+        MailContentBuilder.content(from: parsed, accountID: accountID, messageID: messageID, cacheDirectory: cacheDirectory)
     }
 
-    static func safeFileName(_ name: String) -> String {
-        let bad = CharacterSet(charactersIn: "/\\:?%*|\"<>\n\r\t")
-        let cleaned = name.components(separatedBy: bad).joined(separator: "_")
-        return String(cleaned.prefix(120))
-    }
+    static func safeFileName(_ name: String) -> String { MailContentBuilder.safeFileName(name) }
 
     func rawSource(for message: Message) async throws -> Data {
         guard let location = Self.location(of: message.id) else { throw MailProviderError.notFound }
@@ -530,12 +491,13 @@ actor IMAPProvider: MailProvider {
     }
 
     private func smtpSend(from: String, recipients: [String], data: Data, password: String) async throws {
-        let security = server.smtpSecurity ?? (server.smtpPort == 465 ? .tls : .starttls)
+        let security = server.resolvedSMTPSecurity
         let transport: MailTransport
+        let place = "SMTP \(server.smtpHost):\(server.smtpPort)"
         do {
             transport = try await transportFactory(server.smtpHost, server.smtpPort, security == .tls, 120)
         } catch {
-            throw MailProviderError.network(error.localizedDescription)
+            throw MailProviderError.network("\(place) — \(error.localizedDescription)")
         }
         defer { transport.close() }
         let smtp = SMTPClient(transport: transport, heloName: "unimail.local")
@@ -550,8 +512,12 @@ actor IMAPProvider: MailProvider {
             try await smtp.send(from: from, recipients: recipients, data: data)
             await smtp.quit()
         } catch let error as SMTPError {
-            if case .authenticationFailed = error { throw MailProviderError.authenticationFailed }
+            if case .authenticationFailed(let text) = error {
+                throw MailProviderError.loginRejected(server: server.smtpHost, details: text)
+            }
             throw error
+        } catch let error as MailTransportError {
+            throw MailProviderError.network("\(place) — \(error.localizedDescription)")
         }
     }
 
@@ -585,13 +551,20 @@ actor IMAPProvider: MailProvider {
     // MARK: - Проверка и отключение
 
     func verifyLogin() async throws {
-        let client = try await connect(readTimeout: 60)
+        // Короткие тайм-ауты: неверный порт или защита не должны держать мастер минуту.
+        let client = try await connect(readTimeout: 20)
         _ = try await client.listFolders()
         await client.logout()
         guard let password = password() else { throw MailProviderError.missingPassword }
         // SMTP: только вход, без отправки.
-        let security = server.smtpSecurity ?? (server.smtpPort == 465 ? .tls : .starttls)
-        let transport = try await transportFactory(server.smtpHost, server.smtpPort, security == .tls, 60)
+        let security = server.resolvedSMTPSecurity
+        let place = "SMTP \(server.smtpHost):\(server.smtpPort)"
+        let transport: MailTransport
+        do {
+            transport = try await transportFactory(server.smtpHost, server.smtpPort, security == .tls, 20)
+        } catch {
+            throw MailProviderError.network("\(place) — \(error.localizedDescription)")
+        }
         defer { transport.close() }
         let smtp = SMTPClient(transport: transport, heloName: "unimail.local")
         do {
@@ -601,8 +574,12 @@ actor IMAPProvider: MailProvider {
             try await smtp.authenticate(username: server.username.isEmpty ? account.email : server.username, password: password)
             await smtp.quit()
         } catch let error as SMTPError {
-            if case .authenticationFailed = error { throw MailProviderError.authenticationFailed }
+            if case .authenticationFailed(let text) = error {
+                throw MailProviderError.loginRejected(server: server.smtpHost, details: text)
+            }
             throw error
+        } catch let error as MailTransportError {
+            throw MailProviderError.network("\(place) — \(error.localizedDescription)")
         }
     }
 

@@ -237,6 +237,10 @@ private struct AccountsSettings: View {
     }
 
     private func serverSummary(_ account: Account) -> String {
+        if let exchange = account.exchange {
+            let login = exchange.username.isEmpty ? account.email : exchange.username
+            return "Exchange (EWS) \(EWSEndpoint.url(for: exchange.server)?.host ?? exchange.server) · \(login)"
+        }
         guard let server = account.server else { return "не заданы" }
         return "IMAP \(server.imapHost):\(server.imapPort) · SMTP \(server.smtpHost):\(server.smtpPort)"
     }

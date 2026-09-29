@@ -33,6 +33,55 @@ enum ServerPresets {
         }
         return ServerSettings(imapHost: "imap.\(domain)", smtpHost: "smtp.\(domain)", username: email)
     }
+
+    /// Выбран Gmail или iCloud — их серверы и для своего домена (Google Workspace, iCloud+).
+    static func settings(for email: String, kind: ProviderKind) -> ServerSettings? {
+        switch kind {
+        case .gmail: return retarget(settings(for: "x@gmail.com"), email: email)
+        case .icloud:
+            var preset = settings(for: "x@icloud.com")
+            preset?.username = email
+            return preset
+        default: return settings(for: email)
+        }
+    }
+
+    private static let known: Set<String> = ["yandex.ru", "ya.ru", "mail.ru", "bk.ru", "inbox.ru", "list.ru", "rambler.ru",
+                                             "icloud.com", "me.com", "gmail.com", "fastmail.com", "outlook.com", "hotmail.com"]
+
+    private static func retarget(_ preset: ServerSettings?, email: String) -> ServerSettings? {
+        guard var preset else { return nil }
+        preset.username = email
+        return preset
+    }
+
+    /// Свой домен на Яндексе, Google, Mail.ru, Microsoft 365 или iCloud: смотрим MX-записи (DNS over HTTPS).
+    /// Возвращает настройки и название почтового сервиса.
+    static func detectByMX(_ email: String) async -> (ServerSettings, String)? {
+        guard let domain = email.split(separator: "@").last?.lowercased(), domain.contains("."),
+              !known.contains(domain),
+              let url = URL(string: "https://dns.google/resolve?name=\(domain)&type=MX") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let answers = json["Answer"] as? [[String: Any]] else { return nil }
+        let hosts = answers.compactMap { ($0["data"] as? String)?.lowercased() }.joined(separator: " ")
+        let map: [(String, String, String)] = [
+            ("yandex", "x@yandex.ru", "Яндекс 360"),
+            ("google", "x@gmail.com", "Google Workspace"),
+            ("mail.ru", "x@mail.ru", "Почта Mail.ru для бизнеса"),
+            ("outlook.com", "x@outlook.com", "Microsoft 365"),
+            ("icloud", "x@icloud.com", "iCloud+"),
+            ("messagingengine", "x@fastmail.com", "Fastmail"),
+        ]
+        for (needle, sample, title) in map where hosts.contains(needle) {
+            guard var preset = settings(for: sample) else { continue }
+            preset.username = email
+            return (preset, title)
+        }
+        return nil
+    }
 }
 
 /// Мастер «Добавить почтовый ящик»: шаг 1 — провайдер, шаг 2 — данные и серверы (экран 10 макета).
@@ -53,6 +102,13 @@ struct AddAccountView: View {
     /// Проверка входа перед добавлением.
     @State private var verifying = false
     @State private var verifyError: String?
+    /// Откуда взялись серверы: готовые настройки, MX-записи домена или догадка.
+    @State private var serverSource: String?
+    @State private var mxTask: Task<Void, Never>?
+    /// Outlook / Exchange: EWS (как Outlook для Mac) или IMAP/SMTP.
+    @State private var useEWS = true
+    @State private var exchangeServer = ""
+    @State private var exchangeLogin = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -81,6 +137,27 @@ struct AddAccountView: View {
             .clipped()
             .animation(Motion.smooth, value: step)
 
+            // Ошибка проверки входа — отдельной плашкой на всю ширину, текст целиком (можно выделить и скопировать).
+            if step == 2, let verifyError {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(UM.orange)
+                        .padding(.top, 1)
+                    Text(verifyError)
+                        .font(.system(size: 12))
+                        .foregroundStyle(UM.fg)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(UM.orange.opacity(0.12)))
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
             HStack(spacing: 8) {
                 if step == 2 {
                     Button { step = 1 } label: {
@@ -94,23 +171,12 @@ struct AddAccountView: View {
                     }
                     .buttonStyle(HoverStyle(radius: 7))
                 }
-                if step == 2, let verifyError {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(UM.orange)
-                        Text(verifyError)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(UM.fg2)
-                            .lineLimit(2)
-                            .help(verifyError)
-                    }
-                    .transition(.opacity)
-                }
                 Spacer()
                 Button("Отмена") { dismiss() }
                     .buttonStyle(UMButtonStyle(kind: .secondary, height: 28, radius: 7))
                     .keyboardShortcut(.cancelAction)
                 if step == 2 && verifyError != nil {
-                    Button("Добавить всё равно") { add() }
+                    Button { add() } label: { Text("Добавить всё равно").lineLimit(1).fixedSize() }
                         .buttonStyle(UMButtonStyle(kind: .secondary, height: 28, radius: 7))
                 }
                 Button {
@@ -119,17 +185,19 @@ struct AddAccountView: View {
                     HStack(spacing: 6) {
                         if verifying { ProgressView().controlSize(.small) }
                         Text(step == 1 ? "Продолжить" : (verifying ? "Проверяю вход…" : "Добавить ящик"))
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                 }
                 .buttonStyle(UMButtonStyle(kind: .primary, height: 28, radius: 7, horizontal: 16))
                 .keyboardShortcut(.defaultAction)
                 .disabled(step == 2 && (!canAdd || verifying))
             }
-            .animation(Motion.snappy, value: verifyError)
             .padding(.horizontal, 20)
             .frame(height: 60)
             .hairline(.top)
         }
+        .animation(Motion.snappy, value: verifyError)
         .frame(width: 560, height: 520)
         .background(UM.sheet)
         .foregroundStyle(UM.fg)
@@ -194,9 +262,7 @@ struct AddAccountView: View {
                     formRow("Имя") { field("Как вас подписывать", text: $senderName) }
                     formRow("Адрес") {
                         field("name@example.com", text: $email)
-                            .onChange(of: email) { _, value in
-                                if let preset = ServerPresets.settings(for: value) { server = preset }
-                            }
+                            .onChange(of: email) { _, value in detectServers(for: value) }
                     }
                     if kind.usesPassword {
                         formRow("Пароль") {
@@ -229,13 +295,63 @@ struct AddAccountView: View {
                 }
                 .padding(.top, 22)
 
-                if kind.usesPassword {
-                    serversCard.padding(.top, 18)
+                if kind == .outlook {
+                    Picker("", selection: $useEWS) {
+                        Text("Exchange (EWS)").tag(true)
+                        Text("IMAP и SMTP").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .padding(.top, 18)
+                }
+                if kind == .outlook && useEWS {
+                    exchangeCard.padding(.top, 12)
+                } else if kind.usesPassword {
+                    serversCard.padding(.top, kind == .outlook ? 12 : 18)
                 }
             }
             .padding(.horizontal, 32)
             .padding(.top, 6)
             .padding(.bottom, 12)
+        }
+    }
+
+    private var exchangeCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                formRow("Сервер") { field("mail.company.ru — как в Outlook", text: $exchangeServer) }
+                formRow("Логин") { field("DOMAIN\\user или адрес почты", text: $exchangeLogin) }
+            }
+            Text("Тот же сервер, что указан в Outlook. Логин можно не заполнять — тогда используется адрес почты. Письма отправляются через Exchange.")
+                .font(.system(size: 11.5))
+                .foregroundStyle(UM.fg3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(UM.card))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(UM.cardBorder, lineWidth: 0.5))
+    }
+
+    /// Серверы по адресу: готовые настройки, потом MX-записи домена (свой домен на Яндексе, Google…).
+    private func detectServers(for value: String) {
+        mxTask?.cancel()
+        if let preset = ServerPresets.settings(for: value, kind: kind) {
+            server = preset
+            let domain = value.split(separator: "@").last.map(String.init) ?? ""
+            serverSource = (kind == .gmail || kind == .icloud || !preset.imapHost.hasSuffix(domain)) ? "Найдены автоматически" : nil
+        }
+        if kind == .outlook, exchangeServer.isEmpty || exchangeServer.hasPrefix("mail.") {
+            let domain = value.split(separator: "@").last.map(String.init) ?? ""
+            if domain.contains(".") { exchangeServer = "mail.\(domain)" }
+        }
+        guard kind == .imap || kind == .outlook, serverSource == nil else { return }
+        mxTask = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled, let (preset, title) = await ServerPresets.detectByMX(value), !Task.isCancelled else { return }
+            withAnimation(Motion.snappy) {
+                server = preset
+                serverSource = "Почта на \(title)"
+            }
         }
     }
 
@@ -249,13 +365,17 @@ struct AddAccountView: View {
                         .rotationEffect(.degrees(serversOpen ? 90 : 0))
                     Text("Серверы IMAP и SMTP").fontWeight(.semibold)
                     Spacer()
-                    if !server.imapHost.isEmpty {
+                    if let serverSource, !server.imapHost.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.circle").font(.system(size: 12))
-                            Text("Найдены автоматически")
+                            Text(serverSource)
                         }
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(UM.privFg)
+                    } else if !server.imapHost.isEmpty {
+                        Text("Проверьте адреса у почтового сервиса")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(UM.fg3)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -272,8 +392,8 @@ struct AddAccountView: View {
                         Text("Порт").foregroundStyle(UM.fg3)
                         Text("Защита").foregroundStyle(UM.fg3)
                     }
-                    serverRow("IMAP", host: $server.imapHost, port: $server.imapPort, security: imapSecurity)
-                    serverRow("SMTP", host: $server.smtpHost, port: $server.smtpPort, security: smtpSecurity)
+                    serverRow("IMAP", host: $server.imapHost, port: imapPort, security: imapSecurity)
+                    serverRow("SMTP", host: $server.smtpHost, port: smtpPort, security: smtpSecurity)
                 }
                 .font(.system(size: 12))
                 .padding(12)
@@ -285,12 +405,37 @@ struct AddAccountView: View {
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(UM.cardBorder, lineWidth: 0.5))
     }
 
+    /// Защита и порт связаны: STARTTLS на 993 не заработает — порт меняется вместе с защитой и наоборот.
     private var imapSecurity: Binding<ConnectionSecurity> {
-        Binding(get: { server.imapSecurity ?? .tls }, set: { server.imapSecurity = $0 })
+        Binding(get: { server.imapSecurity ?? .tls }, set: { value in
+            server.imapSecurity = value
+            if value == .starttls && server.imapPort == 993 { server.imapPort = 143 }
+            if value == .tls && server.imapPort == 143 { server.imapPort = 993 }
+        })
     }
 
     private var smtpSecurity: Binding<ConnectionSecurity> {
-        Binding(get: { server.smtpSecurity ?? .tls }, set: { server.smtpSecurity = $0 })
+        Binding(get: { server.smtpSecurity ?? .tls }, set: { value in
+            server.smtpSecurity = value
+            if value == .starttls && server.smtpPort == 465 { server.smtpPort = 587 }
+            if value == .tls && server.smtpPort == 587 { server.smtpPort = 465 }
+        })
+    }
+
+    private var imapPort: Binding<Int> {
+        Binding(get: { server.imapPort }, set: { value in
+            server.imapPort = value
+            if value == 993 { server.imapSecurity = .tls }
+            if value == 143 { server.imapSecurity = .starttls }
+        })
+    }
+
+    private var smtpPort: Binding<Int> {
+        Binding(get: { server.smtpPort }, set: { value in
+            server.smtpPort = value
+            if value == 465 { server.smtpSecurity = .tls }
+            if value == 587 || value == 25 { server.smtpSecurity = .starttls }
+        })
     }
 
     private func serverRow(_ title: String, host: Binding<String>, port: Binding<Int>,
@@ -359,11 +504,14 @@ struct AddAccountView: View {
             label = "Демо \(store.accounts.count + 1)"
             email = "demo\(store.accounts.count + 1)@example.com"
         }
+        serverSource = nil
+        if !email.isEmpty { detectServers(for: email) }
         step = 2
     }
 
     private var canAdd: Bool {
         let emailOK = Address(name: nil, email: email).isValid
+        if kind == .outlook && useEWS { return emailOK && !password.isEmpty && EWSEndpoint.url(for: exchangeServer) != nil }
         return kind.usesPassword ? emailOK && !password.isEmpty : emailOK
     }
 
@@ -398,7 +546,11 @@ struct AddAccountView: View {
             email: trimmed,
             kind: kind,
             tint: tint,
-            server: kind.usesPassword ? server : nil,
+            server: kind.usesPassword && !(kind == .outlook && useEWS) ? server : nil,
+            exchange: kind == .outlook && useEWS
+                ? ExchangeSettings(server: exchangeServer.trimmingCharacters(in: .whitespaces),
+                                   username: exchangeLogin.trimmingCharacters(in: .whitespaces))
+                : nil,
             senderName: senderName.isEmpty ? nil : senderName
         )
     }

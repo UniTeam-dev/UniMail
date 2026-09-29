@@ -39,6 +39,41 @@ enum ICSBuilder {
         return lines.map(fold).joined(separator: "\r\n") + "\r\n"
     }
 
+    /// Приглашение (METHOD:REQUEST) или отмена (METHOD:CANCEL) от организатора.
+    static func request(uid: String, sequence: Int, summary: String, start: Date, end: Date, allDay: Bool,
+                        location: String, description: String, organizer: Address, attendees: [Address],
+                        method: String = "REQUEST", now: Date = Date()) -> String {
+        var lines: [String] = [
+            "BEGIN:VCALENDAR",
+            "PRODID:-//UniMail//RU",
+            "VERSION:2.0",
+            "CALSCALE:GREGORIAN",
+            "METHOD:\(method)",
+            "BEGIN:VEVENT",
+            "UID:\(uid)",
+            "SEQUENCE:\(sequence)",
+            "DTSTAMP:\(utcStamp(now))",
+        ]
+        if allDay {
+            lines.append("DTSTART;VALUE=DATE:\(dateStamp(start))")
+            lines.append("DTEND;VALUE=DATE:\(dateStamp(end))")
+        } else {
+            lines.append("DTSTART:\(utcStamp(start))")
+            lines.append("DTEND:\(utcStamp(end))")
+        }
+        lines.append("ORGANIZER\(cnParam(organizer.name)):mailto:\(organizer.email)")
+        for attendee in attendees {
+            lines.append("ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE\(cnParam(attendee.name)):mailto:\(attendee.email)")
+        }
+        lines.append("SUMMARY:\(escape(summary))")
+        if !location.isEmpty { lines.append("LOCATION:\(escape(location))") }
+        if !description.isEmpty { lines.append("DESCRIPTION:\(escape(description))") }
+        lines.append("STATUS:\(method == "CANCEL" ? "CANCELLED" : "CONFIRMED")")
+        lines.append("TRANSP:OPAQUE")
+        lines += ["END:VEVENT", "END:VCALENDAR"]
+        return lines.map(fold).joined(separator: "\r\n") + "\r\n"
+    }
+
     // MARK: Форматирование
 
     static func utcStamp(_ date: Date) -> String {

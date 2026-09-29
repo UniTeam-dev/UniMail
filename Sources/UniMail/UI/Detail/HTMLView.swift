@@ -18,6 +18,11 @@ struct HTMLView: NSViewRepresentable {
         config.websiteDataStore = .nonPersistent()
         let view = PassthroughWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
+        // Ширина колонки поменялась (окно растянули) — пересчитываем масштаб и высоту.
+        view.onWidthChange = { [weak coordinator = context.coordinator, weak view] in
+            guard let coordinator, let view else { return }
+            coordinator.fit(view)
+        }
         return view
     }
 
@@ -43,12 +48,32 @@ struct HTMLView: NSViewRepresentable {
 
         init(height: Binding<CGFloat>) { self.height = height }
 
+        /// Письма с фиксированной шириной (таблицы, вёрстка из Word) шире колонки чтения:
+        /// уменьшаем их масштабом (CSS zoom), чтобы ничего не обрезалось, и берём итоговую высоту.
+        static let fitScript = """
+        (function () {
+          var b = document.body, d = document.documentElement;
+          if (!b) { return d.scrollHeight; }
+          b.style.zoom = '';
+          var vw = d.clientWidth || window.innerWidth;
+          var w = Math.max(d.scrollWidth, b.scrollWidth);
+          if (vw > 0 && w > vw + 2) { b.style.zoom = String(Math.max(vw / w, 0.35)); }
+          return Math.max(d.scrollHeight, b.scrollHeight * (parseFloat(b.style.zoom) || 1));
+        })();
+        """
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            fit(webView)
+        }
+
+        func fit(_ webView: WKWebView) {
             let height = self.height
-            webView.evaluateJavaScript("document.documentElement.scrollHeight") { result, _ in
+            webView.evaluateJavaScript(Self.fitScript) { result, _ in
                 guard let number = result as? NSNumber, number.doubleValue > 0 else { return }
-                let value = CGFloat(number.doubleValue)
-                Task { @MainActor in height.wrappedValue = value }
+                let value = ceil(CGFloat(number.doubleValue))
+                Task { @MainActor in
+                    if abs(height.wrappedValue - value) > 1 { height.wrappedValue = value }
+                }
             }
         }
 
@@ -69,8 +94,22 @@ struct HTMLView: NSViewRepresentable {
 
 /// WKWebView, который не перехватывает прокрутку — её получает внешний ScrollView треда.
 final class PassthroughWebView: WKWebView {
+    var onWidthChange: (() -> Void)?
+    private var lastWidth: CGFloat = 0
+    private var pendingFit: DispatchWorkItem?
+
     override func scrollWheel(with event: NSEvent) {
         nextResponder?.scrollWheel(with: event)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        guard abs(newSize.width - lastWidth) > 1 else { return }
+        lastWidth = newSize.width
+        pendingFit?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.onWidthChange?() }
+        pendingFit = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 }
 

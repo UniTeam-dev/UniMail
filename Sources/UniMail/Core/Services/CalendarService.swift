@@ -58,6 +58,12 @@ final class CalendarService {
 
     private(set) var access: Access = .notDetermined
     private(set) var calendars: [CalendarInfo] = []
+    /// Растёт при любом изменении в Календаре — вью перечитывают события.
+    private(set) var revision = 0
+    /// Календари macOS, скрытые в «Расписании».
+    var hiddenCalendarIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "hiddenSystemCalendars") ?? []) {
+        didSet { UserDefaults.standard.set(Array(hiddenCalendarIDs), forKey: "hiddenSystemCalendars") }
+    }
     /// Последняя ошибка по-русски (для плашки в интерфейсе).
     private(set) var lastError: String?
 
@@ -71,6 +77,7 @@ final class CalendarService {
             MainActor.assumeIsolated {
                 CalendarService.shared.refreshAccess()
                 if CalendarService.shared.access.canRead { CalendarService.shared.reloadCalendars() }
+                CalendarService.shared.revision += 1
             }
         }
     }
@@ -226,6 +233,136 @@ final class CalendarService {
         } catch {
             lastError = "Не удалось добавить встречу: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    // MARK: Встречи для «Расписания»
+
+    /// События видимых календарей как встречи UniMail.
+    func calendarEvents(from start: Date, to end: Date) -> [CalendarEvent] {
+        guard access.canRead, end > start else { return [] }
+        let visible = store.calendars(for: .event).filter { !hiddenCalendarIDs.contains($0.calendarIdentifier) }
+        guard !visible.isEmpty else { return [] }
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: visible)
+        return store.events(matching: predicate).map(Self.event)
+    }
+
+    private static func event(_ ek: EKEvent) -> CalendarEvent {
+        let id = ek.eventIdentifier ?? ek.calendarItemIdentifier
+        var event = CalendarEvent(id: "ek-\(id)-\(Int(ek.startDate.timeIntervalSince1970))", source: .system, accountID: nil,
+                                  remoteID: id, title: ek.title?.isEmpty == false ? ek.title! : "Без названия",
+                                  start: ek.startDate, end: ek.endDate)
+        event.isAllDay = ek.isAllDay
+        event.location = ek.location ?? ""
+        event.notes = ek.notes ?? ""
+        if let url = ek.url, !event.notes.contains(url.absoluteString) {
+            event.notes += (event.notes.isEmpty ? "" : "\n") + url.absoluteString
+        }
+        event.calendarTitle = ek.calendar?.title ?? ""
+        event.colorHex = (ek.calendar?.color).flatMap(hex)
+        event.isRecurring = ek.hasRecurrenceRules
+        event.isCancelled = ek.status == .canceled
+        event.canEdit = ek.calendar?.allowsContentModifications ?? false
+        if let organizer = ek.organizer {
+            event.organizer = attendee(organizer)
+        }
+        let participants = ek.attendees ?? []
+        event.attendees = participants.map(attendee)
+        event.isMeeting = !participants.isEmpty
+        if let me = participants.first(where: \.isCurrentUser) {
+            event.myResponse = attendee(me).response
+            if ek.organizer?.isCurrentUser != true { event.canEdit = false }
+        } else {
+            event.myResponse = .organizer
+        }
+        return event
+    }
+
+    private static func attendee(_ participant: EKParticipant) -> EventAttendee {
+        let email = participant.url.absoluteString.replacingOccurrences(of: "mailto:", with: "", options: .caseInsensitive)
+        let response: EventResponse
+        switch participant.participantStatus {
+        case .accepted: response = .accepted
+        case .declined: response = .declined
+        case .tentative: response = .tentative
+        default: response = .none
+        }
+        return EventAttendee(name: participant.name, email: email.removingPercentEncoding ?? email,
+                             response: response, optional: participant.participantRole == .optional)
+    }
+
+    private static func hex(_ color: NSColor) -> UInt32? {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return nil }
+        let r = UInt32(max(0, min(255, rgb.redComponent * 255)))
+        let g = UInt32(max(0, min(255, rgb.greenComponent * 255)))
+        let b = UInt32(max(0, min(255, rgb.blueComponent * 255)))
+        return r << 16 | g << 8 | b
+    }
+
+    /// Календари, в которые можно добавлять события.
+    var writableCalendars: [CalendarInfo] { calendars.filter(\.allowsModifications) }
+
+    var defaultCalendarID: String? { store.defaultCalendarForNewEvents?.calendarIdentifier }
+
+    func toggleHidden(_ calendarID: String) {
+        if hiddenCalendarIDs.contains(calendarID) { hiddenCalendarIDs.remove(calendarID) } else { hiddenCalendarIDs.insert(calendarID) }
+        revision += 1
+    }
+
+    /// Создать или изменить событие. Возвращает его id.
+    @discardableResult
+    func save(_ draft: EventDraft, calendarID: String?) throws -> String {
+        let event: EKEvent
+        if let id = draft.remoteID, let existing = store.event(withIdentifier: id) {
+            event = existing
+        } else {
+            event = EKEvent(eventStore: store)
+        }
+        if let calendarID, let calendar = store.calendar(withIdentifier: calendarID) {
+            event.calendar = calendar
+        } else if event.calendar == nil {
+            guard let calendar = store.defaultCalendarForNewEvents else {
+                throw NSError(domain: "UniMail", code: 1, userInfo: [NSLocalizedDescriptionKey: "Не выбран календарь."])
+            }
+            event.calendar = calendar
+        }
+        event.title = draft.title
+        event.isAllDay = draft.isAllDay
+        event.startDate = draft.start
+        event.endDate = max(draft.end, draft.start.addingTimeInterval(draft.isAllDay ? 0 : 5 * 60))
+        event.location = draft.location.isEmpty ? nil : draft.location
+        event.notes = draft.notes.isEmpty ? nil : draft.notes
+        event.alarms = draft.reminderMinutes.map { [EKAlarm(relativeOffset: TimeInterval(-$0 * 60))] } ?? []
+        try store.save(event, span: .thisEvent, commit: true)
+        revision += 1
+        return event.eventIdentifier ?? event.calendarItemIdentifier
+    }
+
+    func delete(eventID: String) throws {
+        guard let event = store.event(withIdentifier: eventID) else { return }
+        try store.remove(event, span: .thisEvent, commit: true)
+        invitations[eventID] = nil
+        revision += 1
+    }
+
+    // MARK: Приглашения к событиям macOS
+
+    /// Кого и с какого ящика пригласили на событие Календаря macOS (EventKit не хранит участников от приложений).
+    struct Invitation: Codable, Hashable {
+        var uid: String
+        var sequence: Int
+        var accountID: UUID
+        var attendees: [Address]
+    }
+
+    var invitations: [String: Invitation] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: "eventInvitations"),
+                  let value = try? JSONDecoder().decode([String: Invitation].self, from: data) else { return [:] }
+            return value
+        }
+        set {
+            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "eventInvitations")
         }
     }
 

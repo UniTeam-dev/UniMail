@@ -29,6 +29,13 @@ struct RulesSettingsTab: View {
                         }
                     }
                 }
+                ForEach(exchangeAccounts) { account in
+                    GridRow(alignment: .top) {
+                        label(exchangeAccounts.count > 1 ? "Правила Exchange\n\(account.displayName)" : "Правила Exchange")
+                            .padding(.top, 6)
+                        ExchangeRulesCard(account: account)
+                    }
+                }
                 GridRow(alignment: .top) {
                     label("Напомнить об ответе").padding(.top, 3)
                     VStack(alignment: .leading, spacing: 4) {
@@ -71,6 +78,8 @@ struct RulesSettingsTab: View {
             )
         }
     }
+
+    private var exchangeAccounts: [Account] { store.accounts.filter { $0.exchange != nil } }
 
     // MARK: Правила
 
@@ -214,6 +223,94 @@ struct RulesSettingsTab: View {
             .multilineTextAlignment(.trailing)
             .frame(width: 130, alignment: .trailing)
             .gridColumnAlignment(.trailing)
+    }
+}
+
+// MARK: - Правила Exchange
+
+/// Правила «Входящих» с сервера Exchange: выполняет их сам сервер, здесь — просмотр.
+@MainActor
+private struct ExchangeRulesCard: View {
+    @Environment(MailStore.self) private var store
+    let account: Account
+    @State private var loading = false
+
+    var body: some View {
+        let rules = store.serverRules[account.id]
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 0) {
+                if let error = store.serverRulesErrors[account.id] {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(UM.warnFg)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                } else if let rules, rules.isEmpty {
+                    Text("На сервере правил нет")
+                        .foregroundStyle(UM.fg3)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                } else if let rules {
+                    ForEach(Array(rules.enumerated()), id: \.element.id) { index, rule in
+                        if index > 0 {
+                            Rectangle().fill(UM.sep).frame(height: 0.5).padding(.leading, 36)
+                        }
+                        row(rule)
+                    }
+                } else {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 48)
+                }
+            }
+            .rulesCardStyle()
+            HStack(spacing: 10) {
+                Button {
+                    Task { await reload() }
+                } label: {
+                    Label("Обновить", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(UMButtonStyle(kind: .secondary))
+                .disabled(loading)
+                Text("Работают на сервере, даже когда Mac выключен. Изменить — в Outlook или Outlook Web.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(UM.fg3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task { if store.serverRules[account.id] == nil { await reload() } }
+    }
+
+    private func reload() async {
+        loading = true
+        await store.loadServerRules(accountID: account.id)
+        loading = false
+    }
+
+    private func row(_ rule: ServerRule) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: rule.isEnabled ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 13))
+                .foregroundStyle(rule.isEnabled ? UM.accent : UM.fg3)
+                .frame(width: 16)
+                .padding(.top, 1)
+                .help(rule.isEnabled ? "Включено" : "Выключено")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rule.name).fontWeight(.semibold).lineLimit(1)
+                Text(summary(rule))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(UM.fg3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .opacity(rule.isEnabled ? 1 : 0.55)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+    }
+
+    private func summary(_ rule: ServerRule) -> String {
+        let when = rule.conditions.isEmpty ? "Все письма" : "Если " + rule.conditions.joined(separator: " и ")
+        let then = rule.actions.isEmpty ? "" : " → " + rule.actions.joined(separator: ", ")
+        return when + then
     }
 }
 

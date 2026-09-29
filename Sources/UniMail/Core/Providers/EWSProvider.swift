@@ -13,6 +13,10 @@ actor EWSProvider: MailProvider {
     private let cacheDirectory: URL
 
     private var archiveFolder: EWSFolderRef?
+    /// Id стандартных папок Exchange (inbox → AAMk…), чтобы отличать их от своих.
+    private var distinguished: [String: String]?
+    /// Имена своих папок по id — для текста серверных правил.
+    private var folderNames: [String: String] = [:]
     /// Внутренние адреса Exchange (/O=…) → SMTP.
     private var resolved: [String: Address] = [:]
 
@@ -49,8 +53,11 @@ actor EWSProvider: MailProvider {
 
     // MARK: Папки
 
+    static let distinguishedKeys: Set<String> = ["inbox", "sentitems", "drafts", "junkemail", "deleteditems"]
+
     private func folderRef(_ key: String, create: Bool = false) async throws -> EWSFolderRef? {
-        guard key == "archive" else { return .distinguished(key) }
+        if Self.distinguishedKeys.contains(key) { return .distinguished(key) }
+        guard key == "archive" else { return .id(key) }
         if let archiveFolder { return archiveFolder }
         let folders = try await client.findFolders(parent: .distinguished("msgfolderroot"))
         if let found = folders.first(where: { ["архив", "archive"].contains($0.name.lowercased()) }) {
@@ -79,7 +86,112 @@ actor EWSProvider: MailProvider {
                 result.deletedIDs += part.deletedIDs
                 result.headers.merge(part.headers) { a, _ in a }
             }
+            // Список своих папок не критичен: если сервер его не отдал, почта всё равно синхронизирована.
+            result.folders = try? await customFolders()
             return result
+        }
+    }
+
+    /// Своя папка (открыта в боковой панели): письма за то же окно, что и у стандартных.
+    func syncFolder(_ key: String) async throws -> SyncResult {
+        try await mapped {
+            guard let folder = try await folderRef(key) else { return SyncResult(upserted: [], deletedIDs: [], cursor: nil) }
+            let role = Self.folders.first { $0.key == key }?.role ?? .custom
+            return try await syncFolder(folder, key: key, role: role)
+        }
+    }
+
+    /// Системные папки, которые не показываем среди своих (вместе с вложенными).
+    static let hiddenDistinguished = ["msgfolderroot", "inbox", "sentitems", "drafts", "deleteditems", "junkemail",
+                                      "outbox", "syncissues", "conflicts", "localfailures", "serverfailures",
+                                      "conversationhistory"]
+    static let hiddenSubtrees: Set<String> = ["deleteditems", "junkemail", "outbox", "syncissues", "conversationhistory"]
+    static let hiddenNames: Set<String> = ["yammer root", "files", "externalcontacts", "personmetadata",
+                                           "rss feeds", "rss-каналы", "quick step settings"]
+
+    /// Свои почтовые папки ящика в порядке дерева: куда раскладывают правила Outlook и пользователь.
+    private func customFolders() async throws -> [MailFolder] {
+        if distinguished == nil {
+            distinguished = try await client.distinguishedFolderIDs(Self.hiddenDistinguished)
+        }
+        let known = distinguished ?? [:]
+        let all = try await client.findAllFolders()
+        for folder in all { folderNames[folder.id] = folder.name }
+
+        let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let hiddenIDs = Set(known.values)
+        let hiddenRoots = Set(Self.hiddenSubtrees.compactMap { known[$0] })
+        let rootID = known["msgfolderroot"]
+        if archiveFolder == nil,
+           let archive = all.first(where: { $0.parentID == rootID && ["архив", "archive"].contains($0.name.lowercased()) }) {
+            archiveFolder = .id(archive.id)
+        }
+        let archiveID: String? = if case .id(let id) = archiveFolder { id } else { nil }
+
+        func isMail(_ folder: EWSFolderInfo) -> Bool {
+            let cls = folder.folderClass ?? "IPF.Note"
+            return (cls == "IPF.Note" || cls.hasPrefix("IPF.Note.")) && cls != "IPF.Note.OutlookHomepage"
+                && !Self.hiddenNames.contains(folder.name.lowercased())
+        }
+        func underHidden(_ folder: EWSFolderInfo) -> Bool {
+            var parent = folder.parentID
+            var guardCount = 0
+            while let id = parent, guardCount < 32 {
+                if hiddenRoots.contains(id) { return true }
+                parent = byID[id]?.parentID
+                guardCount += 1
+            }
+            return false
+        }
+        let visible = all.filter { isMail($0) && !hiddenIDs.contains($0.id) && $0.id != archiveID && !underHidden($0) }
+        let visibleIDs = Set(visible.map(\.id))
+        let children = Dictionary(grouping: visible) { folder -> String in
+            guard let parent = folder.parentID, visibleIDs.contains(parent) else { return "" }
+            return parent
+        }
+
+        var result: [MailFolder] = []
+        func walk(_ parent: String, depth: Int) {
+            let list = (children[parent] ?? []).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            for folder in list {
+                result.append(MailFolder(id: folder.id, name: folder.name,
+                                         parentID: parent.isEmpty ? nil : parent, depth: depth,
+                                         unread: folder.unread, total: folder.total))
+                walk(folder.id, depth: depth + 1)
+            }
+        }
+        walk("", depth: 0)
+        return result
+    }
+
+    /// Правила «Входящих» с сервера — только для показа, выполняет их сам Exchange.
+    func serverRules() async throws -> [ServerRule] {
+        try await mapped {
+            let rules = try await client.inboxRules(mailbox: account.email)
+            if rules.contains(where: { !$0.folderIDs.isEmpty }) && folderNames.isEmpty {
+                _ = try? await customFolders()
+            }
+            let names = folderNames.merging(
+                (distinguished ?? [:]).map { ($0.value, Self.title(forDistinguished: $0.key)) },
+                uniquingKeysWith: { a, _ in a })
+            return rules.sorted { $0.priority < $1.priority }.map { rule in
+                let actions = rule.actions.map { text in
+                    rule.folderIDs.reduce(text) { $0.replacingOccurrences(of: "{\($1)}", with: "«\(names[$1] ?? "папка")»") }
+                }
+                return ServerRule(id: rule.id, name: rule.name, isEnabled: rule.isEnabled,
+                                  conditions: rule.conditions, actions: actions)
+            }
+        }
+    }
+
+    static func title(forDistinguished key: String) -> String {
+        switch key {
+        case "inbox": "Входящие"
+        case "sentitems": "Отправленные"
+        case "drafts": "Черновики"
+        case "deleteditems": "Удалённые"
+        case "junkemail": "Нежелательная почта"
+        default: key
         }
     }
 
@@ -88,6 +200,7 @@ actor EWSProvider: MailProvider {
         let since = Calendar.current.date(byAdding: .day, value: -initialDays, to: .now) ?? .now
         let (found, complete) = try await client.findItems(in: folder, since: since, max: initialLimit)
         let local = try database.messages(accountID: accountID, folder: key)
+        result.deletedIDs += try database.movedIn(accountID: accountID, folder: key)
         let localByID = Dictionary(local.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
 
         var seen = Set<String>()
@@ -199,6 +312,9 @@ actor EWSProvider: MailProvider {
             case .move(_, let role):
                 guard let key = Self.key(for: role), let target = try await folderRef(key, create: true) else { return }
                 try await client.move(ids: items, to: target)
+            case .moveToFolder(_, let folder):
+                guard let target = try await folderRef(folder) else { return }
+                try await client.move(ids: items, to: target)
             case .deletePermanently:
                 try await client.delete(ids: items)
             case .snooze:
@@ -271,7 +387,7 @@ actor EWSProvider: MailProvider {
             m.inReplyTo = outgoing.inReplyToHeader
             m.references = outgoing.referenceHeaders ?? []
             m.extraHeaders = [("X-Mailer", "UniMail for macOS")]
-            if let ics = outgoing.calendarReply { m.calendar = ("REPLY", ics) }
+            if let ics = outgoing.calendarReply { m.calendar = (outgoing.calendarMethod ?? "REPLY", ics) }
             return (m, id)
         }
 
@@ -307,6 +423,119 @@ actor EWSProvider: MailProvider {
         result.headerMessageID = IMAPProvider.stripAngles(lastID)
         result.attachmentHint = !attachments.isEmpty
         return result
+    }
+
+    // MARK: Календарь
+
+    nonisolated var hasServerCalendar: Bool { true }
+
+    func calendarEvents(from start: Date, to end: Date) async throws -> [CalendarEvent] {
+        try await mapped {
+            var events: [CalendarEvent] = []
+            for item in try await client.calendarView(from: start, to: end) {
+                events.append(await event(from: item, detailed: false))
+            }
+            return events
+        }
+    }
+
+    func calendarEventDetails(_ event: CalendarEvent) async throws -> CalendarEvent {
+        try await mapped {
+            guard let item = try await client.calendarDetails(ids: [event.remoteID]).first else { return event }
+            var detailed = await self.event(from: item, detailed: true)
+            // Повторяющаяся встреча: id экземпляра, время — из CalendarView.
+            detailed.start = event.start
+            detailed.end = event.end
+            return detailed
+        }
+    }
+
+    private func event(from item: EWSCalendarItem, detailed: Bool) async -> CalendarEvent {
+        func response(_ text: String?) -> EventResponse {
+            switch text {
+            case "Accept": .accepted
+            case "Tentative": .tentative
+            case "Decline": .declined
+            case "Organizer": .organizer
+            default: .none
+            }
+        }
+        var organizer: EventAttendee?
+        if let box = item.organizer {
+            let address = await address(box)
+            organizer = EventAttendee(name: address.name, email: address.email, response: .organizer)
+        }
+        let isOrganizer = item.myResponse == "Organizer"
+            || (organizer?.email.lowercased() == account.email.lowercased() && !account.email.isEmpty)
+        var attendees: [EventAttendee] = []
+        for (box, status) in item.required {
+            let address = await address(box)
+            attendees.append(EventAttendee(name: address.name, email: address.email, response: response(status)))
+        }
+        for (box, status) in item.optional {
+            let address = await address(box)
+            attendees.append(EventAttendee(name: address.name, email: address.email, response: response(status), optional: true))
+        }
+        var event = CalendarEvent(
+            id: "\(accountID.uuidString)|\(item.id)", source: .exchange, accountID: accountID, remoteID: item.id,
+            title: item.subject.isEmpty ? "(без названия)" : item.subject,
+            start: item.start, end: item.end
+        )
+        event.isAllDay = item.isAllDay
+        event.location = item.location ?? ""
+        event.notes = item.body ?? ""
+        event.organizer = organizer
+        event.attendees = attendees
+        event.isMeeting = item.isMeeting
+        event.isCancelled = item.isCancelled
+        event.isRecurring = item.isRecurring
+        event.myResponse = isOrganizer ? .organizer : response(item.myResponse)
+        event.calendarTitle = account.displayName
+        event.canEdit = isOrganizer || !item.isMeeting
+        event.detailsPending = !detailed
+        return event
+    }
+
+    func saveEvent(_ draft: EventDraft) async throws -> String {
+        let zone = draft.isAllDay ? WindowsTimeZones.windows() : nil
+        return try await mapped {
+            if let id = draft.remoteID {
+                try await client.updateCalendarItem(
+                    id: id, subject: draft.title, body: draft.notes, reminder: draft.reminderMinutes,
+                    start: draft.start, end: draft.end, isAllDay: draft.isAllDay, location: draft.location,
+                    attendees: draft.attendeesChanged ? draft.attendees.map(\.email) : nil, timeZone: zone)
+                return id
+            }
+            return try await client.createCalendarItem(
+                subject: draft.title, body: draft.notes, reminder: draft.reminderMinutes,
+                start: draft.start, end: draft.end, isAllDay: draft.isAllDay, location: draft.location,
+                attendees: draft.attendees.map(\.email), timeZone: zone)
+        }
+    }
+
+    func deleteEvent(remoteID: String) async throws {
+        try await mapped { try await client.deleteCalendarItem(id: remoteID) }
+    }
+
+    func respondToEvent(remoteID: String, response: EventResponse, comment: String?) async throws {
+        guard let kind = Self.meetingResponse(response) else { return }
+        try await mapped { try await client.respond(to: remoteID, kind, comment: comment) }
+    }
+
+    /// Приглашение в письме Exchange — это MeetingRequest: отвечаем на него, сервер сам обновит календарь.
+    func respondToInvite(messageID: String, response: EventResponse) async throws -> Bool {
+        guard let location = Self.location(of: messageID), let kind = Self.meetingResponse(response) else { return false }
+        try await mapped { try await client.respond(to: location.item, kind) }
+        return true
+    }
+
+    static func meetingResponse(_ response: EventResponse) -> EWSMeetingResponse? {
+        switch response {
+        case .accepted: .accept
+        case .tentative: .tentative
+        case .declined: .decline
+        case .none, .organizer: nil
+        }
     }
 
     // MARK: Проверка

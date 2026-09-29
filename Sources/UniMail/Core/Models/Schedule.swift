@@ -4,6 +4,21 @@ enum AppMode: String, Hashable, Sendable {
     case mail, schedule
 }
 
+/// Вид «Расписания».
+enum ScheduleRange: String, CaseIterable, Hashable, Sendable, Identifiable {
+    case day, week, month
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .day: "День"
+        case .week: "Неделя"
+        case .month: "Месяц"
+        }
+    }
+}
+
 /// Слои ленты расписания (переключатели «На ленте»).
 enum ScheduleLayer: String, CaseIterable, Hashable, Sendable {
     case meetingsFromMail, sends, snoozeReturns

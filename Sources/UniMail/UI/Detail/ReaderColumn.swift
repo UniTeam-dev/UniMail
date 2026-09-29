@@ -127,6 +127,15 @@ struct ReaderColumn: View {
                 Button("Прочитано / не прочитано", systemImage: "envelope.badge") { store.toggleRead(threadIDs: ids) }
                 Button("Во входящие", systemImage: "tray") { store.moveToInbox(threadIDs: ids) }
                 Button("Это спам", systemImage: "exclamationmark.octagon") { store.markSpam(threadIDs: ids) }
+                if let accountID = last?.accountID, !store.folders(of: accountID).isEmpty {
+                    Menu("Переместить в папку", systemImage: "folder") {
+                        ForEach(store.folders(of: accountID)) { folder in
+                            Button(String(repeating: "   ", count: min(folder.depth, 6)) + folder.name) {
+                                store.move(threadIDs: ids, toFolder: folder, accountID: accountID)
+                            }
+                        }
+                    }
+                }
                 Divider()
                 Button("Ответить в отдельном окне", systemImage: "macwindow") {
                     if let last { store.compose(.reply, from: last.id) }

@@ -73,6 +73,17 @@ final class MailStore {
     }
 
     private(set) var syncingAccountIDs: Set<UUID> = []
+    /// Своя папка, которая сейчас дочитывается с сервера.
+    private(set) var syncingFolderKeys: Set<String> = []
+    /// Встречи календарей на сервере (Exchange) по ящикам и ошибки их загрузки.
+    var serverEvents: [UUID: [CalendarEvent]] = [:]
+    var calendarErrors: [UUID: String] = [:]
+    /// Дата, открытая в «Расписании», и вид (день, неделя, месяц).
+    var scheduleDate = Date.now
+    var scheduleRange: ScheduleRange = .day
+    /// Правила на сервере (Exchange) по аккаунтам и ошибки их загрузки.
+    private(set) var serverRules: [UUID: [ServerRule]] = [:]
+    private(set) var serverRulesErrors: [UUID: String] = [:]
     private(set) var accountErrors: [UUID: String] = [:]
     private(set) var undo: PendingUndo?
 
@@ -90,7 +101,7 @@ final class MailStore {
 
     // MARK: Внутреннее
 
-    private var providers: [UUID: any MailProvider] = [:]
+    private(set) var providers: [UUID: any MailProvider] = [:]
     private var cursors: [UUID: String] = [:]
     private var pendingCommit: (() async -> Void)?
     private var pendingRestore: (() -> Void)?
@@ -190,9 +201,77 @@ final class MailStore {
             cursors[accountID] = result.cursor
             accountErrors[accountID] = nil
             lastSync = .now
+            updateFolders(result.folders, accountID: accountID)
             merge(result, accountID: accountID)
         } catch {
             accountErrors[accountID] = error.localizedDescription
+        }
+        // Открыта своя папка этого ящика — обновляем и её.
+        if case .folder(let id, let key) = scope, id == accountID {
+            await refreshFolder(accountID: id, key: key)
+        }
+    }
+
+    /// Дочитать свою папку с сервера (при открытии и при обновлении).
+    func refreshFolder(accountID: UUID, key: String) async {
+        let token = "\(accountID.uuidString)|\(key)"
+        guard let provider = providers[accountID], !syncingFolderKeys.contains(token) else { return }
+        syncingFolderKeys.insert(token)
+        defer { syncingFolderKeys.remove(token) }
+        // Провайдер сверяет папку с базой — перенесённые сюда письма должны уже лежать там.
+        flushPersistence(wait: true)
+        do {
+            let result = try await provider.syncFolder(key)
+            merge(result, accountID: accountID)
+        } catch {
+            accountErrors[accountID] = error.localizedDescription
+        }
+    }
+
+    func isSyncingFolder(accountID: UUID, key: String) -> Bool {
+        syncingFolderKeys.contains("\(accountID.uuidString)|\(key)")
+    }
+
+    private func updateFolders(_ folders: [MailFolder]?, accountID: UUID) {
+        guard let folders, let index = accounts.firstIndex(where: { $0.id == accountID }),
+              accounts[index].folders != folders else { return }
+        withAnimation(Motion.list) { accounts[index].folders = folders }
+        // Папку удалили на сервере — уходим из неё.
+        if case .folder(let id, let key) = scope, id == accountID, !folders.contains(where: { $0.id == key }) {
+            scope = .account(accountID, .inbox)
+        }
+    }
+
+    /// Свои папки ящика (из последней синхронизации).
+    func folders(of accountID: UUID) -> [MailFolder] {
+        account(accountID)?.folders ?? []
+    }
+
+    func folder(_ key: String, of accountID: UUID) -> MailFolder? {
+        folders(of: accountID).first { $0.id == key }
+    }
+
+    /// Заголовок списка: название своей папки или роли.
+    var scopeTitle: String {
+        if case .folder(let id, let key) = scope { return folder(key, of: id)?.name ?? "Папка" }
+        return scope.role.title
+    }
+
+    /// Непрочитанные в своей папке: пока папку не открывали — счётчик с сервера (Exchange).
+    func folderUnread(_ folder: MailFolder, accountID: UUID) -> Int {
+        let local = messages.values.filter { $0.accountID == accountID && $0.role == .custom && $0.folder == folder.id }
+        if local.isEmpty { return folder.unread ?? 0 }
+        return local.reduce(0) { $0 + ($1.isRead ? 0 : 1) }
+    }
+
+    /// Правила Exchange: загрузить с сервера.
+    func loadServerRules(accountID: UUID) async {
+        guard let provider = providers[accountID] else { return }
+        do {
+            serverRules[accountID] = try await provider.serverRules()
+            serverRulesErrors[accountID] = nil
+        } catch {
+            serverRulesErrors[accountID] = error.localizedDescription
         }
     }
 
@@ -326,7 +405,7 @@ final class MailStore {
     // MARK: Хранение
 
     /// Отметить письма изменёнными: через ~0,7 с они запишутся в базу (или удалятся, если их больше нет).
-    private func markDirty(_ ids: [String]) {
+    func markDirty(_ ids: [String]) {
         guard database != nil, !ids.isEmpty else { return }
         dirtyIDs.formUnion(ids)
         guard persistTask == nil else { return }
@@ -636,6 +715,9 @@ final class MailStore {
             if !searchText.isEmpty { scheduleIndexSearch() }
             if let first = selectedThreadID { openThread(first) }
         }
+        if case .folder(let id, let key) = newScope {
+            Task { await self.refreshFolder(accountID: id, key: key) }
+        }
     }
 
     func toggleHidden(_ id: UUID) {
@@ -650,6 +732,12 @@ final class MailStore {
     private func inScopeAccounts(_ m: Message, _ scope: MailScope) -> Bool {
         if let id = scope.accountID { return m.accountID == id }
         return !hiddenAccountIDs.contains(m.accountID)
+    }
+
+    /// Письмо в списке этой области: своя папка — по ключу папки, остальное — по роли.
+    private func matchesScope(_ m: Message, _ scope: MailScope) -> Bool {
+        if let key = scope.folderKey { return m.role == .custom && m.folder == key }
+        return matchesRole(m, scope.role)
     }
 
     private func matchesRole(_ m: Message, _ role: MailboxRole) -> Bool {
@@ -673,7 +761,7 @@ final class MailStore {
                 guard searchEverywhere || (m.role != .trash && m.role != .spam) else { return false }
                 return query.matches(m) || (hits.contains(m.id) && query.matchesFilters(m))
             }
-            guard matchesRole(m, scope.role) else { return false }
+            guard matchesScope(m, scope) else { return false }
             if scope.role == .inbox, let categoryFilter, m.role == .inbox, m.category != categoryFilter { return false }
             return filter.matches(m)
         }
@@ -716,12 +804,12 @@ final class MailStore {
 
     func unreadCount(_ scope: MailScope) -> Int {
         return messages.values.reduce(0) { count, m in
-            count + ((!m.isRead && inScopeAccounts(m, scope) && matchesRole(m, scope.role)) ? 1 : 0)
+            count + ((!m.isRead && inScopeAccounts(m, scope) && matchesScope(m, scope)) ? 1 : 0)
         }
     }
 
     func totalCount(_ scope: MailScope) -> Int {
-        messages.values.reduce(0) { $0 + ((inScopeAccounts($1, scope) && matchesRole($1, scope.role)) ? 1 : 0) }
+        messages.values.reduce(0) { $0 + ((inScopeAccounts($1, scope) && matchesScope($1, scope)) ? 1 : 0) }
     }
 
     /// Тред — напоминание «нет ответа» (последнее исходящее без ответа).
@@ -756,6 +844,36 @@ final class MailStore {
         }
         markDirty(messageIDs)
         push(messageIDs) { .markRead(ids: $0, read: read) }
+    }
+
+    /// «Отметить все как прочитанные» — всё непрочитанное в области (с учётом поиска и фильтра), с «Отменить».
+    func markAllRead(in target: MailScope? = nil) {
+        let target = target ?? scope
+        let ids = visibleMessages(in: target).filter { !$0.isRead }.map(\.id)
+        guard !ids.isEmpty else { return }
+        let title = ids.count == 1 ? "1 письмо отмечено прочитанным" : "Прочитано: \(ids.count)"
+        perform(title: title, symbol: "envelope.open", ids: ids,
+                action: { .markRead(ids: $0, read: true) }) { message in
+            message.isRead = true
+        }
+    }
+
+    /// Непрочитанные в области — для доступности команды «Отметить все как прочитанные».
+    func hasUnread(in target: MailScope? = nil) -> Bool {
+        unreadCount(target ?? scope) > 0
+    }
+
+    /// Переместить в свою папку ящика (письма других ящиков не трогаем).
+    func move(threadIDs: [String], toFolder folder: MailFolder, accountID: UUID) {
+        let ids = withoutFollowUpReminders(messageIDs(ofThreads: threadIDs))
+            .filter { messages[$0]?.accountID == accountID && messages[$0]?.folder != folder.id }
+        perform(title: "Перемещено в «\(folder.name)»", symbol: "folder", ids: ids,
+                action: { .moveToFolder(ids: $0, folder: folder.id) }) { message in
+            // Id остаётся от старой папки: при синхронизации новой папки эту копию заменит настоящая.
+            message.role = .custom
+            message.folder = folder.id
+            message.snoozedUntil = nil
+        }
     }
 
     func toggleFlag(threadIDs: [String]) {
@@ -1068,13 +1186,38 @@ final class MailStore {
 
     // MARK: Приглашения
 
-    /// Ответ на приглашение: запись в Календарь и iCalendar REPLY организатору.
+    /// Отметить в письме, что на приглашение ответили (ответ ушёл из календаря).
+    func setInviteResponse(messageID: String, _ value: String?) {
+        guard messages[messageID]?.invite != nil else { return }
+        messages[messageID]?.invite?.response = value
+        markDirty([messageID])
+    }
+
+    /// Ответ на приглашение: Exchange отвечает сам; иначе запись в Календарь и iCalendar REPLY организатору.
     @discardableResult
     func respondToInvite(messageID: String, status: ICSPartStat) async -> Bool {
         guard let message = messages[messageID], let invite = message.invite,
               let account = account(message.accountID) else { return false }
+        let previous = message.invite?.response
         withAnimation(Motion.snappy) { messages[messageID]?.invite?.response = status.rawValue }
         markDirty([messageID])
+
+        // Exchange: ответ на само приглашение — сервер обновит календарь и известит организатора.
+        if let provider = providers[account.id], provider.hasServerCalendar, Self.isServerMessageID(messageID) {
+            do {
+                if try await provider.respondToInvite(messageID: messageID, response: EventResponse(partStat: status.rawValue)) {
+                    updateServerEvent(accountID: account.id, title: invite.title, start: invite.start) {
+                        $0.myResponse = EventResponse(partStat: status.rawValue)
+                    }
+                    return true
+                }
+            } catch {
+                withAnimation(Motion.snappy) { messages[messageID]?.invite?.response = previous }
+                markDirty([messageID])
+                accountErrors[account.id] = "Ответ на приглашение не отправлен: \(error.localizedDescription)"
+                return false
+            }
+        }
 
         var ok = true
         if status != .declined {
@@ -1275,7 +1418,7 @@ final class MailStore {
     }
 
     /// Письмо появляется в «Отправленных» только после подтверждения сервером.
-    private func deliver(_ original: OutgoingMessage, silent: Bool = false) async {
+    func deliver(_ original: OutgoingMessage, silent: Bool = false) async {
         guard let provider = providers[original.accountID] else { return }
         var draft = original
         // Заголовки треда: на кого отвечаем.

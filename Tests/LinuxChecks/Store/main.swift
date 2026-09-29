@@ -97,6 +97,38 @@ let archived = store.messages.values.filter { $0.accountID == accountID && $0.ro
 check(archived.count == 2 && archived.allSatisfy { $0.folder == "Archive" }, "archive copies synced, inbox copies removed")
 check(!store.messages.values.contains { $0.accountID == accountID && $0.folder == "INBOX" }, "no stale inbox ids")
 
+// 5a. Свои папки: список с сервера, письма по открытию, «Отметить все как прочитанные», перенос в папку.
+imap.lock.withLock {
+    imap.folders["Projects"] = [FakeMail(uid: 1, flags: [], modSeq: 103, raw: mail3.raw, envelope: mail3.envelope,
+                                         structure: mail3.structure, headerBlock: mail3.headerBlock, text: mail3.text)]
+    imap.folders["Projects/Q4"] = []
+}
+await store.refresh(accountID: accountID)
+let customFolders = store.folders(of: accountID)
+check(customFolders.map(\.id) == ["Projects", "Projects/Q4"], "custom folders listed: \(customFolders.map(\.id))")
+check(customFolders.last?.name == "Q4" && customFolders.last?.depth == 1 && customFolders.last?.parentID == "Projects", "nested folder")
+let projectsScope = MailScope.folder(accountID, "Projects")
+store.select(scope: projectsScope)
+check(store.scopeTitle == "Projects", "list title is folder name")
+check(await waitUntil { store.threads(in: projectsScope).count == 1 }, "folder messages loaded on open")
+check(store.unreadCount(projectsScope) == 1, "folder unread count")
+store.markAllRead()
+check(store.unreadCount(projectsScope) == 0, "all marked read optimistically")
+store.undoLast()
+check(store.unreadCount(projectsScope) == 1, "mark all read undone")
+store.markAllRead()
+store.dismissUndo()
+check(await waitUntil { imap.lock.withLock { imap.folders["Projects"]?.first?.flags.contains("\\Seen") == true } }, "read on server")
+if let projectThread = store.threads(in: projectsScope).first?.id, let q4 = customFolders.last {
+    store.move(threadIDs: [projectThread], toFolder: q4, accountID: accountID)
+    check(store.threads(in: projectsScope).isEmpty, "moved out of folder optimistically")
+    store.dismissUndo()
+    check(await waitUntil { imap.lock.withLock { imap.folders["Projects/Q4"]?.count == 1 } }, "moved to folder on server")
+    await store.refreshFolder(accountID: accountID, key: "Projects/Q4")
+    check(store.threads(in: .folder(accountID, "Projects/Q4")).count == 1, "message in target folder")
+}
+store.select(scope: .account(accountID, .inbox))
+
 // 6. Ответ с напоминанием «если не ответят».
 let source = archived.first { $0.headerMessageID == "m2@example.ru" }!
 var draft = OutgoingMessage(accountID: accountID, fromAddress: "me@example.com",
@@ -184,6 +216,25 @@ store.saveDraft(htmlDraft, requestID: draftRequest)
 store.compose(.draft, from: "draft-\(draftRequest.uuidString)")
 check(store.composeQueue.last?.id == draftRequest, "draft reopened with same request id")
 check(store.composeQueue.last?.draft.htmlBody == htmlDraft.htmlBody, "draft keeps formatting")
+
+// 10a. Приглашение из письма — встреча в «Расписании»; ответ уходит письмом с iCalendar REPLY.
+let inviteDay = ISO8601DateFormatter().date(from: "2026-10-01T00:00:00Z")!
+if let archivedInvite = store.messages.values.first(where: { $0.accountID == accountID && $0.headerMessageID == "m2@example.ru" }) {
+    store.loadBodies(threadID: archivedInvite.threadID)
+    _ = await waitUntil { store.messages[archivedInvite.id]?.invite != nil }
+}
+let inviteEvents = store.mailCalendarEvents(from: inviteDay, to: inviteDay.addingTimeInterval(86400), accountFilter: accountID)
+check(inviteEvents.count == 1 && inviteEvents.first?.source == .mail && inviteEvents.first?.needsResponse == true, "invite shown as meeting")
+check(inviteEvents.first?.organizer?.email == "ivan@example.ru" && inviteEvents.first?.location == "Zoom", "invite organizer and place")
+check(store.calendarAccountIDs.isEmpty, "IMAP account has no server calendar")
+if let inviteEvent = inviteEvents.first {
+    let sentBefore = smtp.lock.withLock { smtp.messages.count }
+    check(await store.respond(to: inviteEvent, .accepted), "invite accepted")
+    check(store.messages[inviteEvent.remoteID]?.invite?.response == "ACCEPTED", "response stored on message")
+    check(await waitUntil { smtp.lock.withLock { smtp.messages.count } > sentBefore }, "REPLY sent by mail")
+    check(smtp.lock.withLock { smtp.messages.last?.lowercased().contains("method=reply") == true }, "iCalendar REPLY with ACCEPTED")
+    check(store.mailCalendarEvents(from: inviteDay, to: inviteDay.addingTimeInterval(86400), accountFilter: accountID).first?.myResponse == .accepted, "meeting shows accepted")
+}
 
 // 11. Перезапуск: письма из базы.
 store.flushPersistence(wait: true)

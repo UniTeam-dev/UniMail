@@ -445,6 +445,7 @@ enum RelativeDate {
     private static let time = formatter("HH:mm")
     private static let weekday = formatter("EE")
     private static let dayMonth = formatter("d MMM")
+    private static let dayMonthFull = formatter("d MMMM")
     private static let weekdayTime = formatter("EE, HH:mm")
     private static let weekdayDayMonthTime = formatter("EE, d MMM, HH:mm")
     private static let dayMonthTime = formatter("d MMM, HH:mm")
@@ -491,4 +492,8 @@ enum RelativeDate {
         shortMonth.string(from: date).replacingOccurrences(of: ".", with: "").uppercased()
     }
     static func dayMonthShort(_ date: Date) -> String { dayMonth.string(from: date) }
+    /// «Пн», «Вт»…
+    static func weekdayShort(_ date: Date) -> String { capitalized(weekday.string(from: date)).replacingOccurrences(of: ".", with: "") }
+    /// «29 сентября»
+    static func dayMonthLong(_ date: Date) -> String { dayMonthFull.string(from: date) }
 }

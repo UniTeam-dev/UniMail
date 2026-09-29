@@ -78,6 +78,8 @@ final class FakeIMAP: @unchecked Sendable {
                 + "* LIST (\\HasNoChildren \\Sent) \"/\" \"Sent\"\r\n"
                 + "* LIST (\\HasNoChildren \\Archive) \"/\" \"Archive\"\r\n"
                 + "* LIST (\\HasNoChildren \\Trash) \"/\" \"Trash\"\r\n"
+                + folders.keys.filter { !["INBOX", "Sent", "Archive", "Trash"].contains($0) }.sorted()
+                    .map { "* LIST (\\HasNoChildren) \"/\" \"\($0)\"\r\n" }.joined()
                 + "\(tag) OK LIST done\r\n"
         }
         if upper.hasPrefix("EXAMINE") || upper.hasPrefix("SELECT") {

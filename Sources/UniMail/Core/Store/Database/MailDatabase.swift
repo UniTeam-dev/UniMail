@@ -273,8 +273,8 @@ final class MailDatabase: @unchecked Sendable {
     func folderUIDs(accountID: UUID, folder: String) throws -> [String: UInt32] {
         try queue.sync {
             let rows = try db.query(
-                "SELECT id, uid FROM messages WHERE account_id = ? AND folder = ? AND uid IS NOT NULL",
-                [.text(accountID.uuidString), .text(folder)]
+                "SELECT id, uid FROM messages WHERE account_id = ? AND folder = ? AND uid IS NOT NULL AND instr(id, ?) > 0",
+                [.text(accountID.uuidString), .text(folder), .text("|\(folder)|")]
             ) { stmt -> (String, UInt32) in
                 (stmt.text(0) ?? "", UInt32(truncatingIfNeeded: stmt.int64(1)))
             }
@@ -285,9 +285,18 @@ final class MailDatabase: @unchecked Sendable {
     /// Письма одной папки аккаунта (EWS: сверка с сервером без UID).
     func messages(accountID: UUID, folder: String) throws -> [Message] {
         try queue.sync {
-            let rows = try db.query("SELECT data FROM messages WHERE account_id = ? AND folder = ?",
-                                    [.text(accountID.uuidString), .text(folder)]) { $0.blob(0) }
+            let rows = try db.query("SELECT data FROM messages WHERE account_id = ? AND folder = ? AND instr(id, ?) > 0",
+                                    [.text(accountID.uuidString), .text(folder), .text("|\(folder)|")]) { $0.blob(0) }
             return rows.compactMap { $0.flatMap { try? decoder.decode(Message.self, from: $0) } }
+        }
+    }
+
+    /// Письма, перенесённые в папку локально (id ещё из старой папки): при синхронизации папки
+    /// их заменяют настоящие копии с сервера.
+    func movedIn(accountID: UUID, folder: String) throws -> [String] {
+        try queue.sync {
+            try db.query("SELECT id FROM messages WHERE account_id = ? AND folder = ? AND instr(id, ?) = 0",
+                         [.text(accountID.uuidString), .text(folder), .text("|\(folder)|")]) { $0.text(0) ?? "" }
         }
     }
 

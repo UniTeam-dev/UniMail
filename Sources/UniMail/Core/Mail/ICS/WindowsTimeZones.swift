@@ -3,6 +3,14 @@ import Foundation
 /// Windows-имена часовых поясов (Outlook/Exchange пишут их в TZID) → IANA.
 /// По данным CLDR windowsZones.xml, территория «001».
 enum WindowsTimeZones {
+    /// Обратно: IANA → Windows-имя (для Exchange: встречи «весь день» задаются поясом).
+    static func windows(for zone: TimeZone = .current) -> String? {
+        if zone.identifier == "UTC" || zone.identifier == "GMT" { return "UTC" }
+        let preferred = ["Europe/Moscow": "Russian Standard Time", "Europe/Kyiv": "FLE Standard Time"]
+        if let name = preferred[zone.identifier] { return name }
+        return map.keys.sorted().first { map[$0] == zone.identifier }
+    }
+
     static func iana(for windowsName: String) -> String? {
         let key = windowsName.trimmingCharacters(in: .whitespaces)
         if let v = map[key] { return v }

@@ -191,7 +191,7 @@ private struct ListHeader: View {
         let unread = store.unreadCount(store.scope)
         let subtitle: String = {
             if searching { return "\(count) \(plural(count, "результат", "результата", "результатов"))" }
-            if store.scope.role == .inbox && unread > 0 {
+            if (store.scope.role == .inbox || store.scope.role == .custom) && unread > 0 {
                 return "\(unread) \(plural(unread, "непрочитанное", "непрочитанных", "непрочитанных"))"
             }
             return ""
@@ -199,7 +199,7 @@ private struct ListHeader: View {
 
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(searching ? "Поиск" : store.scope.role.title)
+                Text(searching ? "Поиск" : store.scopeTitle)
                     .font(.system(size: 26, weight: .bold))
                     .tracking(-0.57)
                     .lineLimit(1)
@@ -210,6 +210,18 @@ private struct ListHeader: View {
                     .contentTransition(.numericText(value: Double(unread)))
                     .padding(.leading, 8)
                 Spacer(minLength: 0)
+                if unread > 0 && !searching {
+                    Button { store.markAllRead() } label: {
+                        Image(systemName: "envelope.open")
+                            .font(.system(size: 13))
+                            .foregroundStyle(UM.fg2)
+                            .frame(width: 28, height: 26)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(HoverStyle(radius: 7))
+                    .help("Отметить все как прочитанные · ⌥⌘T")
+                    .transition(.scale.combined(with: .opacity))
+                }
             }
 
             if store.scope.role == .inbox && !searching {
@@ -364,6 +376,16 @@ struct ThreadContextMenu: View {
             ForEach(TimePreset.allCases) { preset in
                 Button("\(preset.title) — \(preset.subtitle)", systemImage: preset.symbol) {
                     store.snooze(threadIDs: [threadID], until: preset.date, label: preset.title)
+                }
+            }
+        }
+        if let accountID = last?.accountID, !store.folders(of: accountID).isEmpty {
+            Menu("Переместить в папку") {
+                ForEach(store.folders(of: accountID)) { folder in
+                    Button(String(repeating: "   ", count: min(folder.depth, 6)) + folder.name) {
+                        store.move(threadIDs: [threadID], toFolder: folder, accountID: accountID)
+                    }
+                    .disabled(store.scope.folderKey == folder.id)
                 }
             }
         }

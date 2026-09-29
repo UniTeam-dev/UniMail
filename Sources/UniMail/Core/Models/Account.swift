@@ -150,6 +150,8 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     var server: ServerSettings?
     /// Задан — ящик работает через Exchange Web Services вместо IMAP/SMTP.
     var exchange: ExchangeSettings?
+    /// Свои папки на сервере (обновляются при синхронизации).
+    var folders: [MailFolder]?
     /// Старое поле: одна подпись строкой. Переносится в `signatures` при загрузке.
     var signature: String = ""
     /// Подписи ящика и какие из них подставлять автоматически.

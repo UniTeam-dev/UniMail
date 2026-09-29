@@ -41,6 +41,28 @@ struct EWSFolder: Sendable, Hashable {
     var name: String
 }
 
+/// Папка из полного дерева ящика (FindFolder Deep).
+struct EWSFolderInfo: Sendable, Hashable {
+    var id: String
+    var name: String
+    var parentID: String?
+    var folderClass: String?
+    var unread: Int?
+    var total: Int?
+}
+
+/// Правило «Входящих» с сервера (GetInboxRules).
+struct EWSRule: Sendable, Hashable {
+    var id: String
+    var name: String
+    var isEnabled: Bool
+    var priority: Int
+    var conditions: [String]
+    var actions: [String]
+    /// Папки из действий «переместить/скопировать» — названия подставит провайдер.
+    var folderIDs: [String]
+}
+
 struct EWSMailbox: Sendable, Hashable {
     var name: String?
     var email: String
@@ -161,6 +183,101 @@ struct EWSClient: Sendable {
         """)
         guard let id = messages.first?.firstDescendant("FolderId")?.attributes["Id"] else { throw EWSError.malformed }
         return EWSFolder(id: id, name: name)
+    }
+
+    /// Всё дерево папок ящика (почтовые и прочие — фильтрует вызывающий).
+    func findAllFolders() async throws -> [EWSFolderInfo] {
+        let messages = try await callChecked("""
+        <m:FindFolder Traversal="Deep"><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape>\
+        <t:AdditionalProperties><t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:ParentFolderId"/>\
+        <t:FieldURI FieldURI="folder:FolderClass"/><t:FieldURI FieldURI="folder:UnreadCount"/>\
+        <t:FieldURI FieldURI="folder:TotalCount"/></t:AdditionalProperties></m:FolderShape>\
+        <m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderIds></m:FindFolder>
+        """)
+        guard let folders = messages.first?.firstDescendant("Folders") else { return [] }
+        return folders.children.compactMap { node in
+            guard let id = node.child("FolderId")?.attributes["Id"] else { return nil }
+            return EWSFolderInfo(
+                id: id,
+                name: node.value("DisplayName") ?? "",
+                parentID: node.child("ParentFolderId")?.attributes["Id"],
+                folderClass: node.name == "Folder" ? (node.value("FolderClass") ?? "IPF.Note") : node.name,
+                unread: node.value("UnreadCount").flatMap { Int($0) },
+                total: node.value("TotalCount").flatMap { Int($0) }
+            )
+        }
+    }
+
+    /// Id стандартных папок (inbox, sentitems…) — чтобы не показывать их среди своих.
+    func distinguishedFolderIDs(_ names: [String]) async throws -> [String: String] {
+        let ids = names.map { "<t:DistinguishedFolderId Id=\"\($0)\"/>" }.joined()
+        let body = try await call("""
+        <m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>\
+        <m:FolderIds>\(ids)</m:FolderIds></m:GetFolder>
+        """)
+        var result: [String: String] = [:]
+        for (name, message) in zip(names, Self.responseMessages(body)) where message.attributes["ResponseClass"] != "Error" {
+            if let id = message.firstDescendant("FolderId")?.attributes["Id"] { result[name] = id }
+        }
+        return result
+    }
+
+    /// Правила «Входящих» (работают на сервере).
+    func inboxRules(mailbox: String) async throws -> [EWSRule] {
+        let body = try await call("""
+        <m:GetInboxRules><m:MailboxSmtpAddress>\(XMLTree.escape(mailbox))</m:MailboxSmtpAddress></m:GetInboxRules>
+        """)
+        guard let response = body.firstDescendant("GetInboxRulesResponse") else { throw EWSError.malformed }
+        try Self.check(response)
+        return (response.child("InboxRules")?.children("Rule") ?? []).map(Self.rule)
+    }
+
+    static func rule(_ node: XNode) -> EWSRule {
+        var conditions: [String] = []
+        var actions: [String] = []
+        var folderIDs: [String] = []
+        func strings(_ element: XNode?) -> [String] {
+            (element?.children ?? []).map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        }
+        func addresses(_ element: XNode?) -> [String] {
+            // В правилах адреса — <t:Address> (EmailAddressType), в письмах — <t:Mailbox>.
+            (element?.children ?? []).map { mailbox($0) }.map { $0.email.isEmpty ? ($0.name ?? "") : $0.email }.filter { !$0.isEmpty }
+        }
+        func quoted(_ list: [String]) -> String { list.map { "«\($0)»" }.joined(separator: " или ") }
+
+        if let c = node.child("Conditions") {
+            if let v = Optional(addresses(c.child("FromAddresses"))), !v.isEmpty { conditions.append("от \(v.joined(separator: ", "))") }
+            if let v = Optional(addresses(c.child("SentToAddresses"))), !v.isEmpty { conditions.append("кому \(v.joined(separator: ", "))") }
+            if let v = Optional(strings(c.child("ContainsSubjectStrings"))), !v.isEmpty { conditions.append("тема содержит \(quoted(v))") }
+            if let v = Optional(strings(c.child("ContainsSubjectOrBodyStrings"))), !v.isEmpty { conditions.append("тема или текст содержит \(quoted(v))") }
+            if let v = Optional(strings(c.child("ContainsBodyStrings"))), !v.isEmpty { conditions.append("текст содержит \(quoted(v))") }
+            if let v = Optional(strings(c.child("ContainsSenderStrings"))), !v.isEmpty { conditions.append("отправитель содержит \(quoted(v))") }
+            if let v = Optional(strings(c.child("ContainsRecipientStrings"))), !v.isEmpty { conditions.append("получатель содержит \(quoted(v))") }
+            if let v = Optional(strings(c.child("ContainsHeaderStrings"))), !v.isEmpty { conditions.append("заголовки содержат \(quoted(v))") }
+            if c.value("SentToMe") == "true" { conditions.append("я в «Кому»") }
+            if c.value("SentCcMe") == "true" { conditions.append("я в копии") }
+            if c.value("SentOnlyToMe") == "true" { conditions.append("только мне") }
+            if c.value("HasAttachments") == "true" { conditions.append("есть вложения") }
+            if let importance = c.value("Importance") { conditions.append("важность: \(importance)") }
+            if !strings(c.child("Categories")).isEmpty { conditions.append("категория \(quoted(strings(c.child("Categories"))))") }
+        }
+        if let a = node.child("Actions") {
+            if let id = a["MoveToFolder", "FolderId"]?.attributes["Id"] { actions.append("переместить в папку {\(id)}"); folderIDs.append(id) }
+            if let id = a["CopyToFolder", "FolderId"]?.attributes["Id"] { actions.append("скопировать в папку {\(id)}"); folderIDs.append(id) }
+            if a.value("MarkAsRead") == "true" { actions.append("отметить прочитанным") }
+            if a.value("Delete") == "true" { actions.append("удалить") }
+            if a.value("PermanentDelete") == "true" { actions.append("удалить навсегда") }
+            if let v = Optional(strings(a.child("AssignCategories"))), !v.isEmpty { actions.append("категория \(quoted(v))") }
+            if let importance = a.value("MarkImportance") { actions.append("важность: \(importance)") }
+            if let v = Optional(addresses(a.child("ForwardToRecipients"))), !v.isEmpty { actions.append("переслать \(v.joined(separator: ", "))") }
+            if let v = Optional(addresses(a.child("RedirectToRecipients"))), !v.isEmpty { actions.append("перенаправить \(v.joined(separator: ", "))") }
+            if a.value("StopProcessingRules") == "true" { actions.append("не применять следующие правила") }
+        }
+        return EWSRule(id: node.value("RuleId") ?? UUID().uuidString,
+                       name: node.value("DisplayName") ?? "Правило",
+                       isEnabled: node.value("IsEnabled") != "false",
+                       priority: node.value("Priority").flatMap { Int($0) } ?? 0,
+                       conditions: conditions, actions: actions, folderIDs: folderIDs)
     }
 
     // MARK: Письма

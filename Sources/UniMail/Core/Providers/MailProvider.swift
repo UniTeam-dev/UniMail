@@ -8,11 +8,13 @@ enum MailAction: Sendable, Equatable, Codable {
     case move(ids: [String], to: MailboxRole)
     case deletePermanently(ids: [String])
     case snooze(ids: [String], until: Date)
+    /// В свою папку (ключ `MailFolder.id`).
+    case moveToFolder(ids: [String], folder: String)
 
     var ids: [String] {
         switch self {
         case .markRead(let ids, _), .flag(let ids, _), .move(let ids, _),
-             .deletePermanently(let ids), .snooze(let ids, _):
+             .deletePermanently(let ids), .snooze(let ids, _), .moveToFolder(let ids, _):
             return ids
         }
     }
@@ -25,6 +27,7 @@ enum MailAction: Sendable, Equatable, Codable {
         case .move(_, let role): .move(ids: ids, to: role)
         case .deletePermanently: .deletePermanently(ids: ids)
         case .snooze(_, let until): .snooze(ids: ids, until: until)
+        case .moveToFolder(_, let folder): .moveToFolder(ids: ids, folder: folder)
         }
     }
 }
@@ -37,6 +40,18 @@ struct SyncResult: Sendable {
     var cursor: String?
     /// Сырые заголовки новых писем (List-Id, Precedence, Auto-Submitted…) — для категоризатора и правил.
     var headers: [String: [String: String]] = [:]
+    /// Свои папки ящика (nil — провайдер папок не отдаёт).
+    var folders: [MailFolder]?
+}
+
+/// Правило на сервере (Exchange): работает там само, в UniMail только показываем.
+struct ServerRule: Identifiable, Hashable, Sendable {
+    var id: String
+    var name: String
+    var isEnabled: Bool
+    /// «Если …» и «то …» простым текстом.
+    var conditions: [String]
+    var actions: [String]
 }
 
 /// Полное содержимое письма после скачивания тела.
@@ -128,6 +143,33 @@ protocol MailProvider: Sendable {
     /// Поиск на сервере по письмам, которых нет локально.
     func serverSearch(_ query: String) async throws -> [Message]
 
+    /// Синхронизировать одну свою папку (при открытии и пока она открыта).
+    func syncFolder(_ key: String) async throws -> SyncResult
+
+    /// Правила на сервере (Exchange). У IMAP — пусто.
+    func serverRules() async throws -> [ServerRule]
+
+    /// Календарь ящика на сервере (Exchange). У IMAP нет — встречи берутся из Календаря macOS.
+    var hasServerCalendar: Bool { get }
+
+    /// Встречи за период (без участников и описания — они в `calendarEventDetails`).
+    func calendarEvents(from start: Date, to end: Date) async throws -> [CalendarEvent]
+
+    /// Встреча целиком: участники, описание.
+    func calendarEventDetails(_ event: CalendarEvent) async throws -> CalendarEvent
+
+    /// Создать (`remoteID == nil`) или изменить встречу. Возвращает id на сервере.
+    func saveEvent(_ draft: EventDraft) async throws -> String
+
+    /// Удалить свою встречу (участникам уйдёт отмена).
+    func deleteEvent(remoteID: String) async throws
+
+    /// Ответить на приглашение из календаря.
+    func respondToEvent(remoteID: String, response: EventResponse, comment: String?) async throws
+
+    /// Ответить на приглашение из письма силами сервера. false — не умеет, ответ уйдёт письмом (iCalendar REPLY).
+    func respondToInvite(messageID: String, response: EventResponse) async throws -> Bool
+
     /// Ждать изменений на сервере (IMAP IDLE). true — что-то пришло, пора синхронизироваться.
     func waitForChanges(timeout: TimeInterval) async throws -> Bool
 
@@ -148,6 +190,18 @@ extension MailProvider {
     }
 
     func rawSource(for message: Message) async throws -> Data { throw MailProviderError.notFound }
+    func syncFolder(_ key: String) async throws -> SyncResult { SyncResult(upserted: [], deletedIDs: [], cursor: nil) }
+    func serverRules() async throws -> [ServerRule] { [] }
+
+    var hasServerCalendar: Bool { false }
+    func calendarEvents(from start: Date, to end: Date) async throws -> [CalendarEvent] { [] }
+    func calendarEventDetails(_ event: CalendarEvent) async throws -> CalendarEvent { event }
+    func saveEvent(_ draft: EventDraft) async throws -> String { throw MailProviderError.notFound }
+    func deleteEvent(remoteID: String) async throws { throw MailProviderError.notFound }
+    func respondToEvent(remoteID: String, response: EventResponse, comment: String?) async throws {
+        throw MailProviderError.notFound
+    }
+    func respondToInvite(messageID: String, response: EventResponse) async throws -> Bool { false }
     func serverSearch(_ query: String) async throws -> [Message] { [] }
 
     func waitForChanges(timeout: TimeInterval) async throws -> Bool {

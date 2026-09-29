@@ -104,8 +104,9 @@ actor IMAPProvider: MailProvider {
         return fresh
     }
 
-    private func loadFolders(_ client: IMAPClient) async throws {
-        guard folders.isEmpty else { return }
+    /// `force` — перечитать список (при синхронизации: пользователь мог создать папку в другом клиенте). LIST дешёвый.
+    private func loadFolders(_ client: IMAPClient, force: Bool = false) async throws {
+        guard folders.isEmpty || force else { return }
         folders = try await client.listFolders().filter(\.isSelectable)
         var map: [MailboxRole: String] = [:]
         for folder in folders {
@@ -141,7 +142,7 @@ actor IMAPProvider: MailProvider {
 
     func sync(cursor: String?) async throws -> SyncResult {
         var result = SyncResult(upserted: [], deletedIDs: [], cursor: nil)
-        try await exclusive { client in try await loadFolders(client) }
+        try await exclusive { client in try await loadFolders(client, force: true) }
         let roles: [MailboxRole] = [.inbox, .sent, .drafts, .archive, .spam, .trash]
         for role in roles {
             guard let folder = roleFolders[role] else { continue }
@@ -150,7 +151,30 @@ actor IMAPProvider: MailProvider {
             result.deletedIDs += part.deletedIDs
             result.headers.merge(part.headers) { a, _ in a }
         }
+        result.folders = customFolders()
         return result
+    }
+
+    /// Свои папки: всё выбираемое, кроме системных (Входящие, Отправленные, Корзина…).
+    private func customFolders() -> [MailFolder] {
+        let system = Set(roleFolders.values).union(["INBOX"])
+        return folders
+            .filter { $0.role == nil && !system.contains($0.name) && $0.name.uppercased() != "INBOX" }
+            .map { folder in
+                let delimiter = folder.delimiter ?? "/"
+                let parts = delimiter.isEmpty ? [folder.name] : folder.name.components(separatedBy: delimiter)
+                let parent = parts.count > 1 ? parts.dropLast().joined(separator: delimiter) : nil
+                return MailFolder(id: folder.name, name: parts.last ?? folder.name,
+                                  parentID: parent, depth: max(0, parts.count - 1))
+            }
+            .sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
+    }
+
+    func syncFolder(_ key: String) async throws -> SyncResult {
+        try await exclusive { client in
+            try await loadFolders(client)
+            return try await syncFolder(client, folder: key, role: .custom)
+        }
     }
 
     private func syncFolder(_ client: IMAPClient, folder: String, role: MailboxRole) async throws -> SyncResult {
@@ -161,6 +185,7 @@ actor IMAPProvider: MailProvider {
 
         var state = try database.syncState(accountID: accountID, folder: folder)
         var local = try database.folderUIDs(accountID: accountID, folder: folder)
+        result.deletedIDs += try database.movedIn(accountID: accountID, folder: folder)
 
         // Новый UIDVALIDITY — старые UID недействительны, начинаем папку заново.
         if let existing = state, existing.uidValidity != info.uidValidity {
@@ -338,6 +363,9 @@ actor IMAPProvider: MailProvider {
                 case .snooze:
                     // «Отложить» живёт локально: на сервере письмо остаётся во «Входящих».
                     break
+                case .moveToFolder(_, let target):
+                    guard target != folder else { return }
+                    try await client.move(uids: uids, to: target)
                 }
             }
         }
@@ -436,7 +464,7 @@ actor IMAPProvider: MailProvider {
             m.inReplyTo = outgoing.inReplyToHeader
             m.references = outgoing.referenceHeaders ?? []
             m.extraHeaders = [("X-Mailer", "UniMail for macOS")]
-            if let ics = outgoing.calendarReply { m.calendar = ("REPLY", ics) }
+            if let ics = outgoing.calendarReply { m.calendar = (outgoing.calendarMethod ?? "REPLY", ics) }
             return (m, id)
         }
 

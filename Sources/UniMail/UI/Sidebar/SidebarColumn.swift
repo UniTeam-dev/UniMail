@@ -214,7 +214,7 @@ private struct BoxHeader: View {
         let subtitle: String
         if store.mode == .schedule {
             title = "Расписание"
-            let calendars = store.accounts.count
+            let calendars = store.accounts.count + (CalendarService.shared.access.canRead ? CalendarService.shared.calendars.count : 0)
             let queued = store.messages.values.filter { $0.role == .scheduled }.count
             subtitle = "\(calendars) \(plural(calendars, "календарь", "календаря", "календарей")) · \(queued) \(plural(queued, "письмо", "письма", "писем")) в очереди"
         } else if let account {
@@ -262,7 +262,13 @@ private struct FolderList: View {
                 SectionLabel(text: "Ещё")
                 ForEach(MailboxRole.secondary) { role in row(role) }
 
-                if store.scope.accountID == nil {
+                if let accountID = store.scope.accountID {
+                    let folders = visibleFolders(accountID)
+                    if !folders.isEmpty {
+                        SectionLabel(text: "Папки").padding(.top, 6)
+                        ForEach(folders) { folder in folderRow(folder, accountID: accountID) }
+                    }
+                } else {
                     SectionLabel(text: "Показывать ящики").padding(.top, 6)
                     ForEach(store.accounts) { account in eye(account) }
                 }
@@ -270,7 +276,94 @@ private struct FolderList: View {
             .padding(.horizontal, 10)
             .padding(.bottom, 12)
         }
-        .animation(Motion.snappy, value: store.scope.role)
+        .animation(Motion.snappy, value: store.scope)
+    }
+
+    // MARK: Свои папки
+
+    @State private var collapsed: Set<String> = []
+
+    /// Папки без свёрнутых веток.
+    private func visibleFolders(_ accountID: UUID) -> [MailFolder] {
+        let all = store.folders(of: accountID)
+        guard !collapsed.isEmpty else { return all }
+        let parents = Dictionary(all.map { ($0.id, $0.parentID) }, uniquingKeysWith: { a, _ in a })
+        return all.filter { folder in
+            var parent = folder.parentID
+            while let id = parent {
+                if collapsed.contains(id) { return false }
+                parent = parents[id] ?? nil
+            }
+            return true
+        }
+    }
+
+    private func folderRow(_ folder: MailFolder, accountID: UUID) -> some View {
+        let scope = MailScope.folder(accountID, folder.id)
+        let isSelected = store.scope == scope && store.searchText.isEmpty
+        let count = store.folderUnread(folder, accountID: accountID)
+        let hasChildren = store.folders(of: accountID).contains { $0.parentID == folder.id }
+        let isCollapsed = collapsed.contains(folder.id)
+        let syncing = store.isSyncingFolder(accountID: accountID, key: folder.id)
+
+        return Button {
+            store.searchText = ""
+            store.select(scope: scope)
+        } label: {
+            HStack(spacing: 7) {
+                Group {
+                    if hasChildren {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(UM.fg3)
+                            .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                            .frame(width: 12, height: 20)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(Motion.snappy) {
+                                    if isCollapsed { collapsed.remove(folder.id) } else { collapsed.insert(folder.id) }
+                                }
+                            }
+                    } else {
+                        Color.clear.frame(width: 12, height: 1)
+                    }
+                }
+                Image(systemName: isSelected ? "folder.fill" : "folder")
+                    .font(.system(size: 13))
+                    .foregroundStyle(isSelected ? UM.accent : UM.fg2)
+                    .frame(width: 18)
+                Text(folder.name)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                if syncing {
+                    ProgressView().controlSize(.mini)
+                } else if count > 0 {
+                    CountPill(count: count, prominent: false)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .padding(.leading, 2 + CGFloat(min(folder.depth, 6)) * 12)
+            .padding(.trailing, 8)
+            .frame(height: 28)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(UM.selSide)
+                        .matchedGeometryEffect(id: "folder", in: selectionNS)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(folder.name)
+        .contextMenu {
+            Button("Отметить все как прочитанные") { store.markAllRead(in: scope) }
+                .disabled(count == 0)
+            Button("Обновить папку") { Task { await store.refreshFolder(accountID: accountID, key: folder.id) } }
+        }
+        .animation(Motion.bouncy, value: count)
     }
 
     private func row(_ role: MailboxRole) -> some View {
@@ -315,6 +408,10 @@ private struct FolderList: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Отметить все как прочитанные") { store.markAllRead(in: scope) }
+                .disabled(store.unreadCount(scope) == 0)
+        }
         .animation(Motion.bouncy, value: count)
     }
 

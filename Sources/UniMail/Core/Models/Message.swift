@@ -3,6 +3,8 @@ import Foundation
 /// Системная роль папки. Одинаковые роли разных аккаунтов объединяются в едином ящике.
 enum MailboxRole: String, Codable, CaseIterable, Identifiable, Sendable {
     case inbox, snoozed, flagged, drafts, scheduled, sent, archive, spam, trash
+    /// Своя папка на сервере (Outlook, Gmail-ярлык, папка IMAP). Какая именно — в `Message.folder`.
+    case custom
 
     var id: String { rawValue }
 
@@ -17,6 +19,7 @@ enum MailboxRole: String, Codable, CaseIterable, Identifiable, Sendable {
         case .archive: "Архив"
         case .spam: "Спам"
         case .trash: "Корзина"
+        case .custom: "Папка"
         }
     }
 
@@ -31,6 +34,7 @@ enum MailboxRole: String, Codable, CaseIterable, Identifiable, Sendable {
         case .archive: "archivebox"
         case .spam: "exclamationmark.octagon"
         case .trash: "trash"
+        case .custom: "folder"
         }
     }
 
@@ -39,6 +43,8 @@ enum MailboxRole: String, Codable, CaseIterable, Identifiable, Sendable {
     /// Основные папки и «Ещё» — как в макете.
     static let primary: [MailboxRole] = [.inbox, .snoozed, .flagged, .drafts, .scheduled, .sent]
     static let secondary: [MailboxRole] = [.archive, .spam, .trash]
+    /// Папки в меню «Перейти» (свои папки — отдельно).
+    static let navigable: [MailboxRole] = primary + secondary
 
     /// Какой счётчик показывать у папки: непрочитанные, всего или ничего.
     enum Counter { case unread, total, none }
@@ -47,6 +53,7 @@ enum MailboxRole: String, Codable, CaseIterable, Identifiable, Sendable {
         case .inbox: .unread
         case .snoozed, .flagged, .drafts, .scheduled, .spam: .total
         case .sent, .archive, .trash: .none
+        case .custom: .unread
         }
     }
 }
@@ -229,8 +236,10 @@ struct OutgoingMessage: Codable, Hashable, Sendable {
     /// Заголовки для треда на сервере (заполняет MailStore перед отправкой).
     var inReplyToHeader: String?
     var referenceHeaders: [String]?
-    /// Ответ на приглашение: iCalendar METHOD:REPLY.
+    /// Ответ на приглашение (iCalendar METHOD:REPLY) или само приглашение (REQUEST / CANCEL).
     var calendarReply: String?
+    /// METHOD части text/calendar: nil — REPLY.
+    var calendarMethod: String?
 }
 
 /// Склонение: 1 письмо, 2 письма, 5 писем.

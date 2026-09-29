@@ -423,6 +423,8 @@ struct MonthGrid: View {
     var circle: CGFloat = 22
     var fontSize: CGFloat = 11
     var disablePast = false
+    /// Дни соседних месяцев тоже выбираются (мини-календарь «Расписания»).
+    var selectsOutside = false
     var onSelect: ((Date) -> Void)? = nil
 
     private var calendar: Calendar {
@@ -471,7 +473,7 @@ struct MonthGrid: View {
                     : (!cell.inMonth || (disablePast && past) ? UM.fg3 : UM.fg)
                 let bg: Color = isSelected || (today && selected == nil) ? UM.accent : .clear
                 Button {
-                    if cell.inMonth && !(disablePast && past) { onSelect?(cell.date) }
+                    if (cell.inMonth || selectsOutside) && !(disablePast && past) { onSelect?(cell.date) }
                 } label: {
                     ZStack(alignment: .bottom) {
                         Text("\(day)")

@@ -36,6 +36,9 @@ struct MailCommands: Commands {
                     .keyboardShortcut("j", modifiers: [.command, .shift])
             }
 
+            Button("Отметить все как прочитанные") { store.markAllRead() }
+                .keyboardShortcut("t", modifiers: [.command, .option])
+
             Menu("Отложить") {
                 ForEach(TimePreset.allCases) { preset in
                     Button("\(preset.title) — \(preset.subtitle)") {
@@ -69,7 +72,7 @@ struct MailCommands: Commands {
 
             Divider()
 
-            ForEach(Array(MailboxRole.allCases.enumerated()), id: \.element) { index, role in
+            ForEach(Array(MailboxRole.navigable.enumerated()), id: \.element) { index, role in
                 Button(role.title) { store.select(scope: store.scope.with(role: role)) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
             }

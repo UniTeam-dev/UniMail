@@ -34,6 +34,16 @@
 	<string>UniMail подсказывает адресатов из ваших Контактов.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>UniMail показывает расписание и добавляет встречи из приглашений.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Свои модели (vLLM, Ollama, LM Studio) часто работают по http на сервере в сети. -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>UniMail подключается к почтовым серверам и моделям AI (vLLM, Ollama) в вашей сети.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>UniMail создаёт напоминания из писем.</string>
 	<key>CFBundleURLTypes</key>

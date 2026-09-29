@@ -1,115 +1,171 @@
 import Foundation
+import Observation
 
-/// Сводка треда и черновик ответа через Anthropic Messages API на ключе пользователя.
+/// Сводка треда и черновик ответа: Anthropic, любой сервис с API OpenAI (OpenAI, OpenRouter, DeepSeek…)
+/// или своя модель на vLLM / Ollama / LM Studio.
 ///
-/// Выключено по умолчанию (`aiEnabled`). Ключ хранится в Keychain под именем `anthropic-api-key`.
-/// Перед отправкой адреса почты и номера телефонов в тексте заменяются на `[email]` и `[телефон]`.
+/// Выключено по умолчанию (`aiEnabled`). Подключений может быть несколько, работает одно — активное.
+/// Ключи — в Связке ключей. Перед отправкой адреса почты и номера телефонов заменяются на `[email]`
+/// и `[телефон]` (для своих серверов это можно выключить).
 @MainActor
+@Observable
 final class AIService {
     static let shared = AIService()
 
+    /// Старый ключ Anthropic (до появления подключений) — переносится в первое подключение.
     static let keychainKey = "anthropic-api-key"
-    private static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
-    private static let apiVersion = "2023-06-01"
-    private static let maxTokens = 600
+    private static let connectionsKey = "aiConnections"
+    private static let activeKey = "aiActiveConnection"
     /// Ограничение на объём текста треда, который уходит в модель.
     private static let maxCharactersPerMessage = 6_000
     private static let maxCharactersTotal = 24_000
 
     enum AIError: LocalizedError {
         case disabled
-        case noKey
+        case noConnection
         case emptyThread
-        case http(Int, String?)
-        case network(String)
-        case badResponse
 
         var errorDescription: String? {
             switch self {
-            case .disabled:
-                "AI-функции выключены. Включите их в Настройках → Интеграции."
-            case .noKey:
-                "Не указан API-ключ Anthropic. Добавьте его в Настройках → Интеграции."
-            case .emptyThread:
-                "В треде нет текста для обработки."
-            case .http(let code, let message):
-                Self.describe(code: code, message: message)
-            case .network(let text):
-                "Нет связи с Anthropic API: \(text)"
-            case .badResponse:
-                "Anthropic API вернул непонятный ответ."
+            case .disabled: "AI-функции выключены. Включите их в Настройках → Интеграции."
+            case .noConnection: "Не выбрана модель. Добавьте подключение в Настройках → Интеграции."
+            case .emptyThread: "В треде нет текста для обработки."
             }
-        }
-
-        private static func describe(code: Int, message: String?) -> String {
-            let base: String
-            switch code {
-            case 400: base = "Запрос отклонён (400). Проверьте название модели."
-            case 401: base = "Неверный API-ключ (401)."
-            case 403: base = "У ключа нет доступа к этой модели (403)."
-            case 404: base = "Модель не найдена (404). Проверьте название модели."
-            case 413: base = "Тред слишком длинный для модели (413)."
-            case 429: base = "Слишком много запросов или исчерпан лимит (429). Попробуйте позже."
-            case 500...599: base = "Сервис Anthropic временно недоступен (\(code)). Попробуйте позже."
-            default: base = "Ошибка Anthropic API (\(code))."
-            }
-            guard let message, !message.isEmpty else { return base }
-            return "\(base)\n\(message)"
         }
     }
 
-    /// Кэш сводок: тред + число писем → текст (чтобы не платить повторно при переключении тредов).
+    /// Подключения к моделям и активное из них.
+    var connections: [AIConnection] = [] {
+        didSet { saveConnections() }
+    }
+    var activeID: UUID? {
+        didSet { UserDefaults.standard.set(activeID?.uuidString, forKey: Self.activeKey) }
+    }
+
+    var active: AIConnection? {
+        connections.first { $0.id == activeID } ?? connections.first
+    }
+
+    /// Кэш сводок: подключение + тред + число писем → текст (чтобы не платить повторно при переключении тредов).
     private var summaryCache: [String: String] = [:]
 
     private let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForRequest = 300
         return URLSession(configuration: config)
     }()
 
-    private init() {}
+    private init() {
+        loadConnections()
+    }
 
-    // MARK: Настройки
+    // MARK: Подключения
 
-    var isEnabled: Bool { AppSettings.bool(AppSettings.aiEnabled) }
-    var model: String { AppSettings.model }
-    var hasAPIKey: Bool { !(Keychain.get(Self.keychainKey) ?? "").isEmpty }
+    private func loadConnections() {
+        let defaults = UserDefaults.standard
+        if let data = defaults.data(forKey: Self.connectionsKey),
+           let saved = try? JSONDecoder().decode([AIConnection].self, from: data) {
+            connections = saved
+            activeID = defaults.string(forKey: Self.activeKey).flatMap(UUID.init(uuidString:)) ?? saved.first?.id
+            return
+        }
+        // Первый запуск новой версии: прежняя настройка Anthropic становится первым подключением.
+        var anthropic = AIPreset.all[0].makeConnection()
+        anthropic.model = AppSettings.model
+        if let oldKey = Keychain.get(Self.keychainKey), !oldKey.isEmpty {
+            try? Keychain.set(oldKey, for: anthropic.keychainAccount)
+        }
+        connections = [anthropic]
+        activeID = anthropic.id
+    }
 
-    func saveAPIKey(_ key: String) throws {
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            Keychain.remove(Self.keychainKey)
-        } else {
-            try Keychain.set(trimmed, for: Self.keychainKey)
+    private func saveConnections() {
+        if let data = try? JSONEncoder().encode(connections) {
+            UserDefaults.standard.set(data, forKey: Self.connectionsKey)
         }
     }
 
-    func removeAPIKey() {
-        Keychain.remove(Self.keychainKey)
+    @discardableResult
+    func add(_ preset: AIPreset) -> AIConnection {
+        let connection = preset.makeConnection()
+        connections.append(connection)
+        if connections.count == 1 { activeID = connection.id }
+        return connection
+    }
+
+    func update(_ connection: AIConnection) {
+        guard let index = connections.firstIndex(where: { $0.id == connection.id }) else { return }
+        connections[index] = connection
+        summaryCache.removeAll()
+    }
+
+    func remove(_ id: UUID) {
+        guard let connection = connections.first(where: { $0.id == id }) else { return }
+        Keychain.remove(connection.keychainAccount)
+        connections.removeAll { $0.id == id }
+        if activeID == id { activeID = connections.first?.id }
+    }
+
+    func activate(_ id: UUID) {
+        activeID = id
+        summaryCache.removeAll()
+    }
+
+    // MARK: Ключи
+
+    var isEnabled: Bool { AppSettings.bool(AppSettings.aiEnabled) }
+    /// Название модели активного подключения — для подписи в интерфейсе.
+    var model: String { active?.model ?? "" }
+
+    func key(for connection: AIConnection) -> String? {
+        Keychain.get(connection.keychainAccount)
+    }
+
+    func saveKey(_ key: String, for connection: AIConnection) throws {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            Keychain.remove(connection.keychainAccount)
+        } else {
+            try Keychain.set(trimmed, for: connection.keychainAccount)
+        }
     }
 
     /// Последние 4 символа сохранённого ключа — для подписи «Сохранён ••••abcd».
-    var maskedKey: String? {
-        guard let key = Keychain.get(Self.keychainKey), key.count >= 4 else { return nil }
+    func maskedKey(for connection: AIConnection) -> String? {
+        guard let key = key(for: connection), key.count >= 4 else { return nil }
         return "••••" + key.suffix(4)
+    }
+
+    /// Список моделей сервера (`GET /v1/models`) — для vLLM, Ollama, LM Studio, OpenAI, Anthropic.
+    func listModels(_ connection: AIConnection) async throws -> [String] {
+        let request = try AIWire.modelsRequest(connection, key: key(for: connection))
+        let (data, status) = try await send(request)
+        guard (200..<300).contains(status) else { throw AIRequestError.http(status, AIWire.errorMessage(data)) }
+        let ids = AIWire.modelIDs(data)
+        guard !ids.isEmpty else { throw AIRequestError.badResponse }
+        return ids
     }
 
     // MARK: Функции
 
+    private func cacheKey(_ threadID: String, _ count: Int) -> String {
+        "\(activeID?.uuidString ?? "")#\(threadID)#\(count)"
+    }
+
     func cachedSummary(threadID: String, messageCount: Int) -> String? {
-        summaryCache["\(threadID)#\(messageCount)"]
+        summaryCache[cacheKey(threadID, messageCount)]
     }
 
     /// Сбросить сохранённую сводку (кнопка «Пересказать заново»).
     func forgetSummary(threadID: String, messageCount: Int) {
-        summaryCache["\(threadID)#\(messageCount)"] = nil
+        summaryCache[cacheKey(threadID, messageCount)] = nil
     }
 
     /// Краткая сводка переписки на русском.
     func summarize(thread: [Message]) async throws -> String {
-        let key = thread.first.map { "\($0.threadID)#\(thread.count)" }
+        let key = thread.first.map { cacheKey($0.threadID, thread.count) }
         if let key, let cached = summaryCache[key] { return cached }
-        let transcript = Self.transcript(thread)
+        let transcript = Self.transcript(thread, redact: active?.redact ?? true)
         guard !transcript.isEmpty else { throw AIError.emptyThread }
 
         let system = """
@@ -128,7 +184,7 @@ final class AIService {
     /// Черновик ответа на последнее письмо треда.
     /// - Parameter instruction: пожелание пользователя («вежливо отказать», «согласиться на вторник»); может быть пустым.
     func draftReply(thread: [Message], instruction: String) async throws -> String {
-        let transcript = Self.transcript(thread)
+        let transcript = Self.transcript(thread, redact: active?.redact ?? true)
         guard !transcript.isEmpty else { throw AIError.emptyThread }
 
         let system = """
@@ -139,98 +195,46 @@ final class AIService {
         Не выдумывай факты, даты и обещания — если чего-то не хватает, оставь [уточнить].
         Персональные данные в тексте заменены на [email] и [телефон] — не пытайся их восстановить.
         """
-        let wish = Self.redact(instruction.trimmingCharacters(in: .whitespacesAndNewlines))
+        let rawWish = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let wish = (active?.redact ?? true) ? Self.redact(rawWish) : rawWish
         var user = "Переписка:\n\n\(transcript)"
         if !wish.isEmpty { user += "\n\nПожелание к ответу: \(wish)" }
         return try await complete(system: system, user: user)
     }
 
-    /// Проверка ключа и модели коротким запросом.
-    func testConnection() async throws -> String {
-        let reply = try await complete(
-            system: "Отвечай одним словом.",
-            user: "Скажи «работает».",
-            maxTokens: 16,
-            requireEnabled: false
-        )
-        return reply
+    /// Проверка подключения коротким запросом (по умолчанию — активного).
+    func testConnection(_ connection: AIConnection? = nil) async throws -> String {
+        try await complete(system: "Отвечай одним словом.", user: "Скажи «работает».",
+                           maxTokens: 64, requireEnabled: false, connection: connection)
     }
 
     // MARK: Запрос
 
-    private struct RequestBody: Encodable {
-        struct Item: Encodable {
-            var role: String
-            var content: String
-        }
-        var model: String
-        var max_tokens: Int
-        var system: String
-        var messages: [Item]
-    }
-
-    private struct ResponseBody: Decodable {
-        struct Block: Decodable {
-            var type: String
-            var text: String?
-        }
-        var content: [Block]
-    }
-
-    private struct ErrorBody: Decodable {
-        struct Detail: Decodable {
-            var type: String?
-            var message: String?
-        }
-        var error: Detail?
-    }
-
     private func complete(system: String, user: String, maxTokens: Int? = nil,
-                          requireEnabled: Bool = true) async throws -> String {
+                          requireEnabled: Bool = true, connection: AIConnection? = nil) async throws -> String {
         if requireEnabled && !isEnabled { throw AIError.disabled }
-        guard let apiKey = Keychain.get(Self.keychainKey), !apiKey.isEmpty else { throw AIError.noKey }
+        guard let connection = connection ?? active else { throw AIError.noConnection }
+        let key = key(for: connection)
+        if connection.kind == .anthropic && (key ?? "").isEmpty { throw AIRequestError.noKey }
+        let request = try AIWire.completionRequest(connection, key: key, system: system, user: user, maxTokens: maxTokens)
+        let (data, status) = try await send(request)
+        guard (200..<300).contains(status) else { throw AIRequestError.http(status, AIWire.errorMessage(data)) }
+        return try AIWire.completionText(data, kind: connection.kind)
+    }
 
-        var request = URLRequest(url: Self.endpoint)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue(Self.apiVersion, forHTTPHeaderField: "anthropic-version")
-        request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.httpBody = try JSONEncoder().encode(RequestBody(
-            model: model,
-            max_tokens: maxTokens ?? Self.maxTokens,
-            system: system,
-            messages: [.init(role: "user", content: user)]
-        ))
-
-        let data: Data
-        let response: URLResponse
+    private func send(_ request: URLRequest) async throws -> (Data, Int) {
         do {
-            let result = try await session.data(for: request)
-            data = result.0
-            response = result.1
+            let (data, response) = try await session.data(for: request)
+            return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
         } catch {
-            throw AIError.network(error.localizedDescription)
+            throw AIRequestError.network(error.localizedDescription)
         }
-
-        guard let http = response as? HTTPURLResponse else { throw AIError.badResponse }
-        guard (200..<300).contains(http.statusCode) else {
-            let message = (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error?.message
-            throw AIError.http(http.statusCode, message)
-        }
-        guard let body = try? JSONDecoder().decode(ResponseBody.self, from: data) else { throw AIError.badResponse }
-        let text = body.content
-            .filter { $0.type == "text" }
-            .compactMap(\.text)
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { throw AIError.badResponse }
-        return text
     }
 
     // MARK: Подготовка текста
 
     /// Тред в виде простого текста: отправитель (только имя), дата, текст письма. Адреса и телефоны замаскированы.
-    static func transcript(_ thread: [Message]) -> String {
+    static func transcript(_ thread: [Message], redact shouldRedact: Bool = true) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.dateFormat = "d MMMM yyyy, HH:mm"
@@ -247,7 +251,7 @@ final class AIService {
             let block = "От: \(sender)\nДата: \(formatter.string(from: message.date))\nТема: \(message.subject)\n\n\(text)"
             if total + block.count > maxCharactersTotal && !parts.isEmpty { break }
             total += block.count
-            parts.append(redact(block))
+            parts.append(shouldRedact ? redact(block) : block)
         }
         return parts.reversed().joined(separator: "\n\n———\n\n")
     }

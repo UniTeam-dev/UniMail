@@ -529,6 +529,35 @@ actor EWSProvider: MailProvider {
         return true
     }
 
+    /// Встреча из Календаря macOS на сервере: сначала в сетке дня, потом серия по теме, потом приглашение во «Входящих».
+    func locateEvent(title: String, start: Date, end: Date) async throws -> CalendarEvent? {
+        let wanted = CalendarEvent.normalizedTitle(title)
+        let subject = title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return try await mapped {
+            let day = try await client.calendarView(from: start.addingTimeInterval(-3600), to: end.addingTimeInterval(3600))
+            if let item = day.first(where: { CalendarEvent.normalizedTitle($0.subject) == wanted && abs($0.start.timeIntervalSince(start)) < 3600 }) {
+                return await event(from: item, detailed: false)
+            }
+            let series = try await client.findCalendarItems(subject: subject)
+            if let item = series.first(where: { CalendarEvent.normalizedTitle($0.subject) == wanted && !$0.isCancelled }) {
+                var found = await event(from: item, detailed: false)
+                found.start = start
+                found.end = end
+                return found
+            }
+            let requests = try await client.findMeetingRequests(subject: subject)
+            if let request = requests.first {
+                var found = CalendarEvent(id: "\(accountID.uuidString)|\(request.id)", source: .exchange, accountID: accountID,
+                                          remoteID: request.id, title: title, start: start, end: end)
+                found.isMeeting = true
+                found.myResponse = .none
+                found.canEdit = false
+                return found
+            }
+            return nil
+        }
+    }
+
     static func meetingResponse(_ response: EventResponse) -> EWSMeetingResponse? {
         switch response {
         case .accepted: .accept

@@ -18,11 +18,23 @@ struct ScheduleData {
         var list = store.mailCalendarEvents(from: start, to: end, accountFilter: store.scope.accountID)
             .filter { $0.accountID.map { !store.scheduleHidden.contains($0) } ?? true }
         // Exchange, подключённый ещё и в Календаре macOS, не дублируем: остаётся версия с ответами и участниками.
-        let known = list.map { ($0.title.lowercased(), $0.start) }
-        list += service.calendarEvents(from: start, to: end).filter { event in
-            let title = event.title.lowercased()
-            return !known.contains { $0.0 == title && abs($0.1.timeIntervalSince(event.start)) < 60 }
-        }
+        let known = list.map { (CalendarEvent.normalizedTitle($0.title), $0.start) }
+        let exchangeDomains = Set(store.calendarAccountIDs.compactMap { store.account($0)?.email.split(separator: "@").last.map { $0.lowercased() } })
+        list += service.calendarEvents(from: start, to: end)
+            .filter { event in
+                let title = CalendarEvent.normalizedTitle(event.title)
+                return !known.contains { $0.0 == title && abs($0.1.timeIntervalSince(event.start)) < 60 }
+            }
+            .map { event in
+                // Встреча из Exchange, подключённого в Календаре macOS, — отвечаем через ящик Exchange.
+                var event = event
+                let domains = Set(([event.organizer].compactMap { $0 } + event.attendees)
+                    .compactMap { $0.email.split(separator: "@").last.map { $0.lowercased() } })
+                event.serverLinked = event.isMeeting && !exchangeDomains.isEmpty
+                    && (event.calendarIsExchange || !domains.isDisjoint(with: exchangeDomains))
+                if let response = store.eventResponseOverrides[event.id] { event.myResponse = response }
+                return event
+            }
         list += demoEvents(from: start, to: end)
         let query = store.searchText.trimmingCharacters(in: .whitespaces).lowercased()
         if !query.isEmpty {

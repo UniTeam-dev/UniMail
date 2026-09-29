@@ -85,9 +85,18 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
     var messageID: String?
     /// Подробности (участники, описание) ещё не загружены.
     var detailsPending = false
+    /// Календарь macOS из учётной записи Exchange: ответить можно через сервер ящика.
+    var calendarIsExchange = false
+    /// Встреча из Календаря macOS, которую можно найти на сервере Exchange ящика.
+    var serverLinked = false
 
-    var needsResponse: Bool { isMeeting && myResponse == .none && !isCancelled && source != .system }
-    var canRespond: Bool { isMeeting && myResponse != .organizer && !isCancelled && source != .system }
+    var needsResponse: Bool { canRespond && myResponse == .none }
+    var canRespond: Bool { isMeeting && myResponse != .organizer && !isCancelled && (source != .system || serverLinked) }
+
+    /// Тема для сравнения: без регистра и лишних пробелов.
+    static func normalizedTitle(_ title: String) -> String {
+        title.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
 
     /// Ссылка на видеовстречу (Teams, Zoom, Meet, Телемост…) из места или описания.
     var meetingURL: URL? { Self.meetingURL(in: location + "\n" + notes) }

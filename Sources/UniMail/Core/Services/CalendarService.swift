@@ -259,6 +259,7 @@ final class CalendarService {
             event.notes += (event.notes.isEmpty ? "" : "\n") + url.absoluteString
         }
         event.calendarTitle = ek.calendar?.title ?? ""
+        event.calendarIsExchange = ek.calendar?.source?.sourceType == .exchange
         event.colorHex = (ek.calendar?.color).flatMap(hex)
         event.isRecurring = ek.hasRecurrenceRules
         event.isCancelled = ek.status == .canceled

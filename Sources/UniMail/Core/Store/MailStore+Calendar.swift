@@ -153,6 +153,28 @@ extension MailStore {
                 return false
             }
         case .system:
+            // Встреча Exchange, которую сервер не отдал в сетке: ищем её в ящиках Exchange и отвечаем там.
+            lastCalendarError = nil
+            for accountID in calendarAccountIDs {
+                guard let provider = providers[accountID] else { continue }
+                do {
+                    guard var found = try await provider.locateEvent(title: event.title, start: event.start, end: event.end) else { continue }
+                    found.accountID = accountID
+                    try await provider.respondToEvent(remoteID: found.remoteID, response: response, comment: nil)
+                    found.myResponse = response
+                    eventResponseOverrides[event.id] = response
+                    if !(serverEvents[accountID] ?? []).contains(where: { $0.id == found.id }) && response != .declined {
+                        serverEvents[accountID, default: []].append(found)
+                    } else {
+                        updateServerEvent(id: found.id, accountID: accountID) { $0.myResponse = response }
+                    }
+                    return true
+                } catch {
+                    lastCalendarError = "Ответ не отправлен: \(error.localizedDescription)"
+                    return false
+                }
+            }
+            lastCalendarError = "Не нашёл эту встречу на сервере Exchange — ответьте в Календаре macOS."
             return false
         }
     }

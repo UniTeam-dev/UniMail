@@ -167,6 +167,9 @@ protocol MailProvider: Sendable {
     /// Ответить на приглашение из календаря.
     func respondToEvent(remoteID: String, response: EventResponse, comment: String?) async throws
 
+    /// Найти на сервере встречу, известную по Календарю macOS (тема и время). nil — не нашлась.
+    func locateEvent(title: String, start: Date, end: Date) async throws -> CalendarEvent?
+
     /// Ответить на приглашение из письма силами сервера. false — не умеет, ответ уйдёт письмом (iCalendar REPLY).
     func respondToInvite(messageID: String, response: EventResponse) async throws -> Bool
 
@@ -202,6 +205,7 @@ extension MailProvider {
         throw MailProviderError.notFound
     }
     func respondToInvite(messageID: String, response: EventResponse) async throws -> Bool { false }
+    func locateEvent(title: String, start: Date, end: Date) async throws -> CalendarEvent? { nil }
     func serverSearch(_ query: String) async throws -> [Message] { [] }
 
     func waitForChanges(timeout: TimeInterval) async throws -> Bool {

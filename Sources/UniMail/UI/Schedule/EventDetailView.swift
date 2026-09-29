@@ -145,7 +145,9 @@ struct EventDetailView: View {
         switch event.source {
         case .exchange: "Exchange · \(event.calendarTitle)"
         case .mail: "Приглашение в письме · \(event.accountID.flatMap { store.account($0)?.displayName } ?? "")"
-        case .system: event.calendarTitle.isEmpty ? "Календарь" : event.calendarTitle
+        case .system:
+            (event.calendarTitle.isEmpty ? "Календарь" : event.calendarTitle)
+                + (event.calendarIsExchange ? " · Exchange в Календаре macOS" : "")
         }
     }
 
@@ -290,7 +292,8 @@ struct EventDetailView: View {
             withAnimation(Motion.snappy) { event.myResponse = response }
             if response == .declined { close() }
         } else {
-            error = event.accountID.flatMap { store.calendarErrors[$0] ?? store.accountErrors[$0] } ?? "Не удалось отправить ответ."
+            error = event.accountID.flatMap { store.calendarErrors[$0] ?? store.accountErrors[$0] }
+                ?? store.lastCalendarError ?? "Не удалось отправить ответ."
         }
     }
 

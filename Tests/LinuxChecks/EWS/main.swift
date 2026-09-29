@@ -161,6 +161,18 @@ final class FakeExchange: @unchecked Sendable {
             """
             return (200, envelope(success("FindItem", "<m:RootFolder TotalItemsInView=\"2\" IncludesLastItemInRange=\"true\"><t:Items>\(items)</t:Items></m:RootFolder>")))
         }
+        if request.contains("<t:Contains") && request.contains("DistinguishedFolderId Id=\"calendar\"") {
+            let found = request.contains("Регулярная встреча") ? """
+            <t:CalendarItem><t:ItemId Id="SERIES1" ChangeKey="S"/><t:Subject>Регулярная встреча_Бабунников А.</t:Subject>\
+            <t:Start>2026-09-03T08:00:00Z</t:Start><t:End>2026-09-03T09:00:00Z</t:End><t:IsMeeting>true</t:IsMeeting>\
+            <t:IsRecurring>true</t:IsRecurring><t:MyResponseType>Accept</t:MyResponseType></t:CalendarItem>
+            """ : ""
+            return (200, envelope(success("FindItem", "<m:RootFolder TotalItemsInView=\"1\" IncludesLastItemInRange=\"true\"><t:Items>\(found)</t:Items></m:RootFolder>")))
+        }
+        if request.contains("<t:Contains") && request.contains("DistinguishedFolderId Id=\"inbox\"") {
+            let found = request.contains("Ретро") ? "<t:MeetingRequest><t:ItemId Id=\"REQ9\"/><t:Subject>Ретро</t:Subject><t:ItemClass>IPM.Schedule.Meeting.Request</t:ItemClass></t:MeetingRequest>" : ""
+            return (200, envelope(success("FindItem", "<m:RootFolder TotalItemsInView=\"1\" IncludesLastItemInRange=\"true\"><t:Items>\(found)</t:Items></m:RootFolder>")))
+        }
         if request.contains("<m:GetItem") && request.contains("calendar:RequiredAttendees") {
             let item = """
             <t:CalendarItem><t:ItemId Id="CAL1" ChangeKey="K1"/><t:Subject>PI Planning 4Q</t:Subject>\
@@ -443,6 +455,15 @@ try await provider.deleteEvent(remoteID: "NEWCAL")
 check(fake.lock.withLock { fake.calendarRequests.last?.contains("SendMeetingCancellations=\"SendToAllAndSaveCopy\"") == true }, "delete sends cancellations")
 check(try await provider.respondToInvite(messageID: "\(account.id.uuidString)|ews|inbox|MR1", response: .tentative), "invite answered by server")
 check(fake.lock.withLock { fake.calendarRequests.last?.contains("<t:TentativelyAcceptItem><t:ReferenceItemId Id=\"MR1\"/>") == true }, "TentativelyAcceptItem on meeting request")
+
+// 6b. Встреча из Календаря macOS, которой нет в CalendarView: серия по теме, затем приглашение во «Входящих».
+let thursday = iso.date(from: "2026-10-01T08:00:00Z")!
+let located = try await provider.locateEvent(title: "Регулярная  встреча_Бабунников А. ", start: thursday, end: thursday.addingTimeInterval(3600))
+check(located?.remoteID == "SERIES1" && located?.start == thursday && located?.myResponse == .accepted, "series found by subject")
+check(fake.lock.withLock { fake.requests.contains { $0.contains("ContainmentMode=\"Substring\"") && $0.contains("Value=\"Регулярная встреча_Бабунников А.\"") } }, "subject restriction")
+let request = try await provider.locateEvent(title: "Ретро", start: thursday, end: thursday.addingTimeInterval(3600))
+check(request?.remoteID == "REQ9" && request?.needsResponse == true, "meeting request in inbox")
+check(try await provider.locateEvent(title: "Нет такой", start: thursday, end: thursday.addingTimeInterval(3600)) == nil, "nothing found")
 
 // 7. Неверный пароль.
 fake.lock.withLock { fake.password = "changed" }

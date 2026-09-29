@@ -50,6 +50,43 @@ extension EWSClient {
         return (messages.first?.descendants("CalendarItem") ?? []).compactMap(Self.calendarItem)
     }
 
+    /// Встречи календаря по теме — одиночные и повторяющиеся серии целиком (без развёртки по дням).
+    /// Нужны, когда встречу видно в Календаре macOS, а в CalendarView сервер её не отдал.
+    func findCalendarItems(subject: String, max: Int = 20) async throws -> [EWSCalendarItem] {
+        let fields = Self.calendarSummaryFields.map { "<t:FieldURI FieldURI=\"\($0)\"/>" }.joined()
+        let messages = try await callChecked("""
+        <m:FindItem Traversal="Shallow"><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape>\
+        <t:AdditionalProperties>\(fields)</t:AdditionalProperties></m:ItemShape>\
+        <m:IndexedPageItemView MaxEntriesReturned="\(max)" Offset="0" BasePoint="Beginning"/>\
+        <m:Restriction>\(Self.subjectRestriction(subject, mode: "Substring"))</m:Restriction>\
+        <m:ParentFolderIds><t:DistinguishedFolderId Id="calendar"/></m:ParentFolderIds></m:FindItem>
+        """)
+        return (messages.first?.descendants("CalendarItem") ?? []).compactMap(Self.calendarItem)
+    }
+
+    /// Приглашения (MeetingRequest) во «Входящих» по теме — на них тоже можно ответить.
+    func findMeetingRequests(subject: String, max: Int = 10) async throws -> [(id: String, subject: String)] {
+        let messages = try await callChecked("""
+        <m:FindItem Traversal="Shallow"><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape>\
+        <t:AdditionalProperties><t:FieldURI FieldURI="item:Subject"/><t:FieldURI FieldURI="item:ItemClass"/></t:AdditionalProperties></m:ItemShape>\
+        <m:IndexedPageItemView MaxEntriesReturned="\(max)" Offset="0" BasePoint="Beginning"/>\
+        <m:Restriction>\(Self.subjectRestriction(subject, mode: "Substring"))</m:Restriction>\
+        <m:ParentFolderIds><t:DistinguishedFolderId Id="inbox"/></m:ParentFolderIds></m:FindItem>
+        """)
+        let items = messages.first?["RootFolder", "Items"]?.children ?? []
+        return items.compactMap { node in
+            guard let id = node.child("ItemId")?.attributes["Id"],
+                  node.name == "MeetingRequest" || (node.value("ItemClass") ?? "").hasPrefix("IPM.Schedule.Meeting.Request")
+            else { return nil }
+            return (id, node.value("Subject") ?? "")
+        }
+    }
+
+    static func subjectRestriction(_ subject: String, mode: String = "FullString") -> String {
+        "<t:Contains ContainmentMode=\"\(mode)\" ContainmentComparison=\"IgnoreCase\"><t:FieldURI FieldURI=\"item:Subject\"/>"
+            + "<t:Constant Value=\"\(XMLTree.escape(subject))\"/></t:Contains>"
+    }
+
     /// Подробности: участники и описание (текстом).
     func calendarDetails(ids: [String]) async throws -> [EWSCalendarItem] {
         guard !ids.isEmpty else { return [] }

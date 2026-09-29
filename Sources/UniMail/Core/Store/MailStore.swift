@@ -78,6 +78,10 @@ final class MailStore {
     /// Встречи календарей на сервере (Exchange) по ящикам и ошибки их загрузки.
     var serverEvents: [UUID: [CalendarEvent]] = [:]
     var calendarErrors: [UUID: String] = [:]
+    /// Последняя ошибка ответа на встречу, не привязанную к ящику (из Календаря macOS).
+    var lastCalendarError: String?
+    /// Ответы на встречи Календаря macOS, отправленные через Exchange (пока macOS не синхронизировался).
+    var eventResponseOverrides: [String: EventResponse] = [:]
     /// Дата, открытая в «Расписании», и вид (день, неделя, месяц).
     var scheduleDate = Date.now
     var scheduleRange: ScheduleRange = .day

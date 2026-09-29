@@ -101,7 +101,7 @@ struct NotificationsSettingsTab: View {
                     Button("Разрешить") {
                         Task {
                             await notifications.requestAuthorization()
-                            authorization = await notifications.authorizationStatus()
+                            self.authorization = await notifications.authorizationStatus()
                         }
                     }
                     .buttonStyle(UMButtonStyle(kind: .secondary, height: 24, radius: 7, horizontal: 10))

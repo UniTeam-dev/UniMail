@@ -294,8 +294,8 @@ fake.lock.withLock { fake.password = "changed" }
 do {
     try await provider.verifyLogin()
     check(false, "401 → authentication failed")
-} catch MailProviderError.authenticationFailed {
-    check(true, "401 → authentication failed")
+} catch MailProviderError.loginRejected(let server, _) {
+    check(server == "Exchange mail.example.com", "401 → authentication failed")
 }
 
 print("\n\(passed) passed, \(failed.count) failed")

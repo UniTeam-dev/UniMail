@@ -86,6 +86,9 @@ extension MailProviderError {
     /// Где у почтового сервиса включается вход для почтовых программ.
     static func loginHint(for server: String) -> String {
         let host = server.lowercased()
+        if host.hasPrefix("exchange") {
+            return "Exchange: логин — как при входе в Windows (ДОМЕН\\имя, например EXAMPLE\\ivan.petrov) или полный адрес почты; пароль — доменный. Логин задаётся в поле «Логин» при добавлении ящика."
+        }
         if host.contains("yandex") {
             return "Яндекс: в Почте откройте «Все настройки → Почтовые программы», включите доступ по IMAP и «Портальный пароль», затем создайте пароль приложения для почты (id.yandex.ru → Безопасность → Пароли приложений) и введите его вместо обычного пароля."
         }

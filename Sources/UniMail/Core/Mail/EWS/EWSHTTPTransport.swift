@@ -40,31 +40,50 @@ final class EWSHTTPTransport: NSObject, URLSessionTaskDelegate, @unchecked Senda
         request.setValue("UniMail/1.0 (macOS)", forHTTPHeaderField: "User-Agent")
         do {
             let (data, response) = try await session.data(for: request)
-            return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200..<300).contains(status) {
+                lock.withLock { if workingMethod == nil { workingMethod = offeredMethod } }
+            }
+            return (status, data)
         } catch {
             let ns = error as NSError
-            if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorUserCancelledAuthentication {
+            if ns.domain == NSURLErrorDomain
+                && (ns.code == NSURLErrorUserCancelledAuthentication || ns.code == NSURLErrorCancelled) {
                 throw EWSError.unauthorized
             }
             throw MailProviderError.network("EWS \(url.host ?? "") — \(error.localizedDescription)")
         }
     }
 
+    /// Способ входа, который уже сработал (Negotiate/NTLM/Basic): следующие запросы сразу идут им.
+    private var workingMethod: String?
+    /// Способ, которым отвечали на последний вызов — если запрос пройдёт, он станет рабочим.
+    private var offeredMethod: String?
+    private let lock = NSLock()
+
+    private static let passwordMethods: Set<String> = [
+        NSURLAuthenticationMethodNegotiate, NSURLAuthenticationMethodNTLM,
+        NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodDefault,
+    ]
+
+    /// Exchange предлагает сразу несколько способов (Negotiate, NTLM, Basic). URLSession начинает с Kerberos —
+    /// если он не прошёл, отказываемся от этого способа (rejectProtectionSpace) и пробуем следующий,
+    /// а не обрываем запрос. Каждый способ — одна попытка: неверный пароль не крутится по кругу.
     func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         let method = challenge.protectionSpace.authenticationMethod
-        switch method {
-        case NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodNTLM,
-             NSURLAuthenticationMethodNegotiate, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodDefault:
-            // Одна попытка на способ: неверный пароль не должен крутиться по кругу.
-            if challenge.previousFailureCount > 0 {
-                completionHandler(.cancelAuthenticationChallenge, nil)
-            } else {
-                completionHandler(.useCredential, URLCredential(user: username, password: password, persistence: .forSession))
-            }
-        default:
+        guard Self.passwordMethods.contains(method) else {
             completionHandler(.performDefaultHandling, nil)
+            return
         }
+        let preferred = lock.withLock { workingMethod }
+        if challenge.previousFailureCount > 0 || (preferred != nil && preferred != method) {
+            if preferred == method { lock.withLock { workingMethod = nil } }
+            completionHandler(.rejectProtectionSpace, nil)
+            return
+        }
+        lock.withLock { offeredMethod = method }
+        completionHandler(.useCredential, URLCredential(user: username, password: password, persistence: .forSession))
     }
 
     func close() {

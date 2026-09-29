@@ -320,7 +320,8 @@ actor EWSProvider: MailProvider {
         do {
             return try await body()
         } catch EWSError.unauthorized {
-            throw MailProviderError.authenticationFailed
+            let host = account.exchange.flatMap { EWSEndpoint.url(for: $0.server)?.host } ?? "сервер"
+            throw MailProviderError.loginRejected(server: "Exchange \(host)", details: "401 — вход не выполнен")
         }
     }
 }

@@ -13,7 +13,7 @@ enum EWSError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unauthorized: "Exchange не принял логин или пароль."
+        case .unauthorized: "Exchange не принял логин или пароль. Попробуйте логин в виде ДОМЕН\\имя (как при входе в Windows) или полный адрес почты."
         case .http(let code): "Сервер Exchange ответил HTTP \(code)."
         case .fault(let text): "Ошибка Exchange: \(text)"
         case .response(let code, let message): message.isEmpty ? "Ошибка Exchange: \(code)" : "Ошибка Exchange (\(code)): \(message)"
